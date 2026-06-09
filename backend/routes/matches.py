@@ -50,6 +50,27 @@ def schedule_match(match: MatchCreate):
             detail="A team cannot play against itself"
         )
     
+    # Verify both teams are in the same pool
+    if team_a["pool"] != team_b["pool"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Teams must be in the same pool. Team {match.team_a_id} is in Pool {team_a['pool']}, Team {match.team_b_id} is in Pool {team_b['pool']}"
+        )
+    
+    # Check if match already exists (in either direction)
+    existing_match = db.matches.find_one({
+        "$or": [
+            {"team_a_id": match.team_a_id, "team_b_id": match.team_b_id},
+            {"team_a_id": match.team_b_id, "team_b_id": match.team_a_id}
+        ]
+    })
+    
+    if existing_match:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A match between teams {match.team_a_id} and {match.team_b_id} already exists"
+        )
+    
     # Generate match_id by combining team IDs
     match_id = f"{match.team_a_id}{match.team_b_id}"
     
