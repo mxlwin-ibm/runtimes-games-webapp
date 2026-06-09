@@ -74,7 +74,7 @@ def schedule_match(match: MatchCreate):
 
 @router.put("/{match_id}", response_model=Match)
 def update_match_result(match_id: str, match_update: MatchUpdate):
-    """Update match result with scores"""
+    """Update match result with scores and update team statistics"""
     db = get_database()
     
     # Find the match by match_id field (string like "B1A2")
@@ -85,10 +85,16 @@ def update_match_result(match_id: str, match_update: MatchUpdate):
             detail=f"Match with match_id '{match_id}' not found"
         )
     
+    # Get team IDs
+    team_a_id = existing_match["team_a_id"]
+    team_b_id = existing_match["team_b_id"]
+    score_a = int(match_update.score_a)
+    score_b = int(match_update.score_b)
+    
     # Update match with scores and status
     update_data = {
-        "score_a": int(match_update.score_a),
-        "score_b": int(match_update.score_b),
+        "score_a": score_a,
+        "score_b": score_b,
         "status": match_update.status.value
     }
     
@@ -96,6 +102,52 @@ def update_match_result(match_id: str, match_update: MatchUpdate):
         {"match_id": match_id},
         {"$set": update_data}
     )
+    
+    # Update team statistics if match is played
+    if match_update.status == MatchStatus.PLAYED:
+        # Update Team A statistics
+        team_a = db.teams.find_one({"team_id": team_a_id})
+        if team_a:
+            new_win_a = team_a.get("win", 0) + (1 if score_a > score_b else 0)
+            new_loss_a = team_a.get("loss", 0) + (1 if score_a < score_b else 0)
+            new_gf_a = team_a.get("gf", 0) + score_a
+            new_ga_a = team_a.get("ga", 0) + score_b
+            new_gd_a = new_gf_a - new_ga_a
+            new_points_a = team_a.get("points", 0) + (3 if score_a > score_b else 0)
+            
+            db.teams.update_one(
+                {"team_id": team_a_id},
+                {"$set": {
+                    "win": new_win_a,
+                    "loss": new_loss_a,
+                    "gf": new_gf_a,
+                    "ga": new_ga_a,
+                    "gd": f"+{new_gd_a}" if new_gd_a >= 0 else str(new_gd_a),
+                    "points": new_points_a
+                }}
+            )
+        
+        # Update Team B statistics
+        team_b = db.teams.find_one({"team_id": team_b_id})
+        if team_b:
+            new_win_b = team_b.get("win", 0) + (1 if score_b > score_a else 0)
+            new_loss_b = team_b.get("loss", 0) + (1 if score_b < score_a else 0)
+            new_gf_b = team_b.get("gf", 0) + score_b
+            new_ga_b = team_b.get("ga", 0) + score_a
+            new_gd_b = new_gf_b - new_ga_b
+            new_points_b = team_b.get("points", 0) + (3 if score_b > score_a else 0)
+            
+            db.teams.update_one(
+                {"team_id": team_b_id},
+                {"$set": {
+                    "win": new_win_b,
+                    "loss": new_loss_b,
+                    "gf": new_gf_b,
+                    "ga": new_ga_b,
+                    "gd": f"+{new_gd_b}" if new_gd_b >= 0 else str(new_gd_b),
+                    "points": new_points_b
+                }}
+            )
     
     # Get updated match
     updated_match = db.matches.find_one({"match_id": match_id})
