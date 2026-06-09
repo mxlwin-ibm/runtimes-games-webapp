@@ -10,9 +10,9 @@ router = APIRouter(prefix="/teams", tags=["teams"])
 def team_helper(team) -> dict:
     """Convert MongoDB document to dict"""
     return {
-        "_id": str(team["_id"]),
-        "team_id": team["team_id"],
-        "team": team["team"],
+        "_id": str(team.get("_id")),
+        "team_id": str(team.get("team_id")),
+        "team": str(team.get("team")),
         "win": team.get("win", 0),
         "loss": team.get("loss", 0),
         "gf": team.get("gf", 0),
