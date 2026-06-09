@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from backend.database import connect_to_mongo, close_mongo_connection, get_database
+from backend.routes import teams
 import os
 from dotenv import load_dotenv
 
@@ -15,7 +16,15 @@ async def lifespan(app: FastAPI):
     close_mongo_connection()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Foosball League API",
+    description="API for managing foosball tournament teams and matches",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Include routers
+app.include_router(teams.router)
 
 
 @app.get("/")

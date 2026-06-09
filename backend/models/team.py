@@ -1,0 +1,43 @@
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional
+
+
+class TeamCreate(BaseModel):
+    """Schema for creating a new team"""
+    team_id: str = Field(..., description="Unique team identifier (e.g., 'Melwin-Vaishak')")
+    team: str = Field(..., description="Team name (e.g., 'Bravo')")
+
+
+class Team(BaseModel):
+    """Complete team model with statistics"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "team_id": "Melwin-Vaishak",
+                "team": "Bravo",
+                "win": 0,
+                "loss": 0,
+                "gf": 0,
+                "ga": 0,
+                "gd": 0,
+                "points": 0
+            }
+        }
+    )
+    
+    team_id: str
+    team: str
+    win: int = 0
+    loss: int = 0
+    gf: int = 0  # Goals For
+    ga: int = 0  # Goals Against
+    gd: int = 0  # Goal Difference
+    points: int = 0
+
+
+class TeamInDB(Team):
+    """Team model as stored in database (includes MongoDB _id)"""
+    model_config = ConfigDict(populate_by_name=True)
+    
+    id: Optional[str] = Field(None, alias="_id")
+
