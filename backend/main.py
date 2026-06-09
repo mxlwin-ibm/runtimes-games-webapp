@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from backend.database import connect_to_mongo, close_mongo_connection, get_database
-from backend.routes import teams
+from backend.routes import teams, matches
 import os
 from dotenv import load_dotenv
 
@@ -25,6 +25,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(teams.router)
+app.include_router(matches.router)
 
 
 @app.get("/")
