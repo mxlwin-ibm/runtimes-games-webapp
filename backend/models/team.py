@@ -21,7 +21,7 @@ class Team(BaseModel):
                 "loss": 0,
                 "gf": 0,
                 "ga": 0,
-                "gd": 0,
+                "gd": "+0",
                 "points": 0
             }
         }
@@ -34,7 +34,7 @@ class Team(BaseModel):
     loss: int = 0
     gf: int = 0  # Goals For
     ga: int = 0  # Goals Against
-    gd: int = 0  # Goal Difference
+    gd: str = "+0"  # Goal Difference (formatted with +/-)
     points: int = 0
 
 

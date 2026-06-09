@@ -18,7 +18,7 @@ def team_helper(team) -> dict:
         "loss": team.get("loss", 0),
         "gf": team.get("gf", 0),
         "ga": team.get("ga", 0),
-        "gd": team.get("gd", 0),
+        "gd": str(team.get("gd")),
         "points": team.get("points", 0)
     }
 
@@ -45,7 +45,7 @@ def create_team(team: TeamCreate):
         "loss": 0,
         "gf": 0,
         "ga": 0,
-        "gd": 0,
+        "gd": "+0",
         "points": 0
     }
     
