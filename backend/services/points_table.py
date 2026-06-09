@@ -22,6 +22,7 @@ def calculate_points_table() -> List[Dict[str, Any]]:
         entry = {
             "team_id": team["team_id"],
             "team_name": team["team_name"],
+            "pool": team.get("pool", "A"),  # Include pool field for frontend filtering
             "played": team.get("win", 0) + team.get("loss", 0),
             "won": team.get("win", 0),
             "lost": team.get("loss", 0),

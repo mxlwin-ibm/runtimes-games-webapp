@@ -1,5 +1,12 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
+from enum import Enum
+
+
+class Pool(str, Enum):
+    """Pool enum for tournament groups"""
+    A = "A"
+    B = "B"
 
 
 class TeamCreate(BaseModel):
@@ -7,6 +14,7 @@ class TeamCreate(BaseModel):
     team_id: str = Field(..., description="Unique team identifier (e.g., 'B1')")
     team_name: str = Field(..., description="Team name (e.g., 'Melwin-Vaishak')")
     club: str = Field(..., description="Club name (e.g., 'Bravo')")
+    pool: Pool = Field(..., description="Tournament pool (A or B)")
 
 
 class Team(BaseModel):
@@ -17,6 +25,7 @@ class Team(BaseModel):
                 "team_id": "B1",
                 "team_name": "Melwin-Vaishak",
                 "club": "Bravo",
+                "pool": "B",
                 "win": 0,
                 "loss": 0,
                 "gf": 0,
@@ -30,6 +39,7 @@ class Team(BaseModel):
     team_id: str
     team_name: str
     club: str
+    pool: Pool
     win: int = 0
     loss: int = 0
     gf: int = 0  # Goals For
