@@ -12,7 +12,8 @@ def team_helper(team) -> dict:
     return {
         "_id": str(team.get("_id")),
         "team_id": str(team.get("team_id")),
-        "team": str(team.get("team")),
+        "team_name": str(team.get("team_name")),
+        "club": str(team.get("club")),
         "win": team.get("win", 0),
         "loss": team.get("loss", 0),
         "gf": team.get("gf", 0),
@@ -38,7 +39,8 @@ def create_team(team: TeamCreate):
     # Create team document with default statistics
     team_dict = {
         "team_id": team.team_id,
-        "team": team.team,
+        "team_name": team.team_name,
+        "club": team.club,
         "win": 0,
         "loss": 0,
         "gf": 0,

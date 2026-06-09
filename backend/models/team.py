@@ -4,8 +4,9 @@ from typing import Optional
 
 class TeamCreate(BaseModel):
     """Schema for creating a new team"""
-    team_id: str = Field(..., description="Unique team identifier (e.g., 'Melwin-Vaishak')")
-    team: str = Field(..., description="Team name (e.g., 'Bravo')")
+    team_id: str = Field(..., description="Unique team identifier (e.g., 'B1')")
+    team_name: str = Field(..., description="Team name (e.g., 'Melwin-Vaishak')")
+    club: str = Field(..., description="Club name (e.g., 'Bravo')")
 
 
 class Team(BaseModel):
@@ -13,8 +14,9 @@ class Team(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "team_id": "Melwin-Vaishak",
-                "team": "Bravo",
+                "team_id": "B1",
+                "team_name": "Melwin-Vaishak",
+                "club": "Bravo",
                 "win": 0,
                 "loss": 0,
                 "gf": 0,
@@ -26,7 +28,8 @@ class Team(BaseModel):
     )
     
     team_id: str
-    team: str
+    team_name: str
+    club: str
     win: int = 0
     loss: int = 0
     gf: int = 0  # Goals For
