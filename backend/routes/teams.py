@@ -71,17 +71,10 @@ def get_teams():
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_team(team_id: str):
-    """Delete a team by MongoDB _id"""
+    """Delete a team by team_id"""
     db = get_database()
     
-    # Validate ObjectId format
-    if not ObjectId.is_valid(team_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
-    
-    result = db.teams.delete_one({"_id": ObjectId(team_id)})
+    result = db.teams.delete_one({"team_id": team_id})
     
     if result.deleted_count == 0:
         raise HTTPException(
