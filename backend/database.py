@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from typing import Optional
+import certifi
 import os
 from dotenv import load_dotenv
 
@@ -24,7 +25,12 @@ def get_database():
 def connect_to_mongo():
     """Connect to MongoDB on startup"""
     global client
-    client = MongoClient(MONGO_URI, server_api=ServerApi('1'))
+
+    client = MongoClient(
+        MONGO_URI,
+        tls=True,
+        tlsCAFile=certifi.where(),
+    )
     print(f"Connected to MongoDB at {MONGO_URI}")
 
 
