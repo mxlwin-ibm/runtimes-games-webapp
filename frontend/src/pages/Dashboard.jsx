@@ -36,7 +36,7 @@ const Dashboard = () => {
         upcomingMatches: upcoming,
       });
     } catch (err) {
-      console.error("Failed to fetch stats:", err);
+      // Error is handled by the UI state
     } finally {
       setLoading(false);
     }

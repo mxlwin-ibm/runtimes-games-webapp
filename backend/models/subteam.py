@@ -32,6 +32,7 @@ class SubTeam(SubTeamCreate):
                 "subteam_id": 1,
                 "pool": "A",
                 "player_ids": ["player1", "player2"],
+                "player_names": ["John Doe", "Jane Smith"],
                 "played": 0,
                 "win": 0,
                 "loss": 0,
@@ -44,6 +45,7 @@ class SubTeam(SubTeamCreate):
         }
     )
     
+    player_names: Optional[List[str]] = Field(default=None, description="List of player names")
     played: int = Field(default=0, description="Number of matches played")
     win: int = Field(default=0, description="Number of wins")
     loss: int = Field(default=0, description="Number of losses")

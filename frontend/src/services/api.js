@@ -4,10 +4,34 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000",
 });
 
-// Teams API
-export const getTeams = () => api.get("/teams/");
-export const createTeam = (teamData) => api.post("/teams/", teamData);
-export const deleteTeam = (id) => api.delete(`/teams/${id}`);
+// Players API (used for team management)
+export const getPlayers = (team) => {
+  const queryParams = team ? `?team=${team}` : "";
+  return api.get(`/players/${queryParams}`);
+};
+export const getPlayer = (id) => api.get(`/players/${id}`);
+export const createPlayer = (playerData) => api.post("/players/", playerData);
+export const updatePlayer = (id, playerData) => api.put(`/players/${id}`, playerData);
+export const deletePlayer = (id) => api.delete(`/players/${id}`);
+
+// Legacy Teams API (mapped to players for backward compatibility)
+export const getTeams = () => api.get("/players/");
+export const createTeam = (teamData) => api.post("/players/", teamData);
+export const deleteTeam = (id) => api.delete(`/players/${id}`);
+
+// SubTeams API
+export const getSubteams = (params) => {
+  const queryParams = new URLSearchParams();
+  if (params?.event) queryParams.append("event", params.event);
+  if (params?.team) queryParams.append("team", params.team);
+  if (params?.pool) queryParams.append("pool", params.pool);
+  const queryString = queryParams.toString();
+  return api.get(`/subteams/${queryString ? `?${queryString}` : ""}`);
+};
+export const getSubteam = (id) => api.get(`/subteams/${id}`);
+export const createSubteam = (subteamData) => api.post("/subteams/", subteamData);
+export const updateSubteam = (id, subteamData) => api.put(`/subteams/${id}`, subteamData);
+export const deleteSubteam = (id) => api.delete(`/subteams/${id}`);
 
 // Matches API
 export const getMatches = () => api.get("/matches/");

@@ -42,10 +42,10 @@ const AppHeader = () => {
         </HeaderMenuItem>
         <HeaderMenuItem
           element={Link}
-          to="/teams"
-          isActive={isActive("/teams")}
+          to="/squads"
+          isActive={isActive("/squads")}
         >
-          Teams
+          Squads
         </HeaderMenuItem>
         <HeaderMenuItem
           element={Link}
@@ -56,8 +56,8 @@ const AppHeader = () => {
         </HeaderMenuItem>
         <HeaderMenuItem
           element={Link}
-          to="/point-table"
-          isActive={isActive("/point-table")}
+          to="/points-table"
+          isActive={isActive("/points-table")}
         >
           Point Table
         </HeaderMenuItem>
@@ -80,11 +80,11 @@ const AppHeader = () => {
           </SideNavLink>
           <SideNavLink
             element={Link}
-            to="/teams"
-            isActive={isActive("/teams")}
+            to="/squads"
+            isActive={isActive("/squads")}
             onClick={onClickSideNavExpand}
           >
-            Teams
+            Squads
           </SideNavLink>
           <SideNavLink
             element={Link}
@@ -96,8 +96,8 @@ const AppHeader = () => {
           </SideNavLink>
           <SideNavLink
             element={Link}
-            to="/point-table"
-            isActive={isActive("/point-table")}
+            to="/points-table"
+            isActive={isActive("/points-table")}
             onClick={onClickSideNavExpand}
           >
             Point Table

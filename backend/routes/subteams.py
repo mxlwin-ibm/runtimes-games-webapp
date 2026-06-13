@@ -9,9 +9,9 @@ from backend.models.enums import Pool
 router = APIRouter(prefix="/subteams", tags=["subteams"])
 
 
-def subteam_helper(subteam) -> dict:
-    """Convert MongoDB document to dict"""
-    return {
+def subteam_helper(subteam, db=None) -> dict:
+    """Convert MongoDB document to dict and fetch player names"""
+    result = {
         "_id": str(subteam.get("_id")),
         "event": str(subteam.get("event")),
         "team": str(subteam.get("team")),
@@ -26,6 +26,20 @@ def subteam_helper(subteam) -> dict:
         "gd": int(subteam.get("gd", 0)),
         "points": int(subteam.get("points", 0))
     }
+    
+    # Fetch player names if db is provided
+    if db is not None:
+        player_names = []
+        for player_id in subteam.get("player_ids", []):
+            try:
+                player = db.players.find_one({"_id": ObjectId(player_id)})
+                if player:
+                    player_names.append(player.get("player_name", "Unknown"))
+            except:
+                player_names.append("Unknown")
+        result["player_names"] = player_names
+    
+    return result
 
 
 @router.post("/", response_model=SubTeam, status_code=status.HTTP_201_CREATED)
@@ -87,7 +101,7 @@ def create_subteam(subteam: SubTeamCreate):
     result = db.subteams.insert_one(subteam_dict)
     subteam_dict["_id"] = str(result.inserted_id)
     
-    return subteam_helper(subteam_dict)
+    return subteam_helper(subteam_dict, db)
 
 
 @router.get("/", response_model=List[SubTeam])
@@ -129,7 +143,7 @@ def get_subteams(
     
     subteams = []
     for subteam in db.subteams.find(query):
-        subteams.append(subteam_helper(subteam))
+        subteams.append(subteam_helper(subteam, db))
     
     return subteams
 
@@ -154,7 +168,7 @@ def get_subteam(id: str):
             detail="SubTeam not found"
         )
     
-    return subteam_helper(subteam)
+    return subteam_helper(subteam, db)
 
 
 @router.put("/{id}", response_model=SubTeam)
@@ -229,7 +243,7 @@ def update_subteam(id: str, subteam_update: SubTeamCreate):
     
     # Get updated subteam
     updated_subteam = db.subteams.find_one({"_id": ObjectId(id)})
-    return subteam_helper(updated_subteam)
+    return subteam_helper(updated_subteam, db)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)

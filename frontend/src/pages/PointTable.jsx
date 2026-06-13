@@ -175,8 +175,6 @@ const PointTable = () => {
           sortAndRankTeams(poolBTeams, "poolB")
         );
       } catch (err) {
-        console.error("Failed to load points table:", err);
-
         if (!isMounted()) return;
 
         setToast({
