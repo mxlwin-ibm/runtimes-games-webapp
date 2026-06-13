@@ -9,3 +9,10 @@ class Pool(str, Enum):
     D = "D"
 
 
+class MatchStatus(str, Enum):
+    """Match status enum"""
+    SCHEDULED = "scheduled"
+    PLAYED = "played"
+    CANCELLED = "cancelled"
+
+
