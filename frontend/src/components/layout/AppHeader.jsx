@@ -23,14 +23,14 @@ const AppHeader = () => {
   };
 
   return (
-    <Header aria-label="Foosball League">
+    <Header aria-label="Runtimes Games S01">
       <HeaderMenuButton
         aria-label={isSideNavExpanded ? 'Close menu' : 'Open menu'}
         onClick={onClickSideNavExpand}
         isActive={isSideNavExpanded}
       />
       <HeaderName element={Link} to="/" prefix="">
-        Foosball League
+      Runtimes Games S01
       </HeaderName>
       <HeaderNavigation aria-label="Main Navigation">
         <HeaderMenuItem
