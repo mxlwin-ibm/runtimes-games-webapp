@@ -25,6 +25,9 @@ import {
   StructuredListRow,
   StructuredListCell,
   Heading,
+  TextInput,
+  Button,
+  Dropdown,
 } from "@carbon/react";
 import {
   Trophy,
@@ -35,10 +38,14 @@ import {
   ChartLine,
   Star,
   ArrowRight,
+  Events,
+  Edit,
+  Save,
 } from "@carbon/icons-react";
-import { getMatches, getPointsTable, getPlayers, getSubteams } from '../services/api';
+import { getMatches, getPointsTable, getPlayers, getSubteams, getEvents, updateEvents } from '../services/api';
 import LoadingState from '../components/common/LoadingState';
 import EmptyState from '../components/common/EmptyState';
+import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -48,6 +55,9 @@ const Dashboard = () => {
   const [teams, setTeams] = useState([]);
   const [subteams, setSubteams] = useState([]);
   const [overallStandings, setOverallStandings] = useState([]);
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  const [isEditingEvents, setIsEditingEvents] = useState(false);
+  const { isAdmin } = useAuth();
 
   useEffect(() => {
     fetchDashboardData();
@@ -59,17 +69,19 @@ const Dashboard = () => {
       setError(null);
 
       // Fetch all data in parallel
-      const [matchesRes, pointsRes, teamsRes, subteamsRes] = await Promise.all([
+      const [matchesRes, pointsRes, teamsRes, subteamsRes, eventsRes] = await Promise.all([
         getMatches(),
         getPointsTable({ event: 'foosball' }),
         getPlayers(),
-        getSubteams({ event: 'foosball' })
+        getSubteams({ event: 'foosball' }),
+        getEvents()
       ]);
 
       setMatches(matchesRes.data || []);
       setPointsTable(pointsRes.data || []);
       setTeams(teamsRes.data || []);
       setSubteams(subteamsRes.data || []);
+      setUpcomingEvents(eventsRes.data || []);
       
       // Calculate overall tournament standings from final matches
       // Pass teamsRes.data directly instead of using state
@@ -80,6 +92,22 @@ const Dashboard = () => {
       setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEventChange = (index, field, value) => {
+    const updated = [...upcomingEvents];
+    updated[index][field] = value;
+    setUpcomingEvents(updated);
+  };
+
+  const saveEvents = async () => {
+    try {
+      await updateEvents(upcomingEvents);
+      setIsEditingEvents(false);
+    } catch (err) {
+      console.error('Error saving events:', err);
+      alert('Failed to save events. Please try again.');
     }
   };
 
@@ -162,11 +190,11 @@ const Dashboard = () => {
     .filter(m => m.match_status === 'played')
     .sort((a, b) => (b.round || 0) - (a.round || 0))[0];
 
-  // Get recent results (last 2 completed matches)
+  // Get recent results (last 3 completed matches)
   const recentResults = matches
     .filter(m => m.match_status === 'played')
     .sort((a, b) => (b.round || 0) - (a.round || 0))
-    .slice(0, 2);
+    .slice(0, 3);
 
   // Calculate MVP (team with most wins, then most goals across all pools)
   const calculateMVP = () => {
@@ -824,16 +852,16 @@ const Dashboard = () => {
             marginBottom: 'var(--cds-spacing-05, 1rem)',
             backgroundColor: 'var(--cds-layer-01, #ffffff)',
           }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
               marginBottom: 'var(--cds-spacing-06, 1.5rem)',
             }}>
               <CheckmarkFilled size={24} style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)', color: 'var(--cds-support-success, #24a148)' }} />
-              <h3 style={{ 
-                fontSize: '1.75rem', 
-                fontWeight: '300', 
-                margin: 0, 
+              <h3 style={{
+                fontSize: '1.75rem',
+                fontWeight: '300',
+                margin: 0,
                 color: 'var(--cds-text-primary, #161616)',
               }}>
                 Recent Results
@@ -842,15 +870,15 @@ const Dashboard = () => {
             
             <Grid narrow>
               {recentResults.map((result, index) => (
-                <Column key={index} lg={8} md={4} sm={4}>
+                <Column key={index} lg={5} md={4} sm={4}>
                   <Tile style={{
                     padding: 'var(--cds-spacing-06, 1.5rem)',
                     backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
                     textAlign: 'center',
                     height: '100%',
                   }}>
-                    <div style={{ 
-                      fontSize: '1.125rem', 
+                    <div style={{
+                      fontSize: '1.125rem',
                       fontWeight: '600',
                       color: 'var(--cds-text-primary, #161616)',
                       marginBottom: 'var(--cds-spacing-05, 1rem)',
@@ -868,8 +896,8 @@ const Dashboard = () => {
                     }}>
                       {result.team1_score} – {result.team2_score}
                     </div>
-                    <div style={{ 
-                      fontSize: '1.125rem', 
+                    <div style={{
+                      fontSize: '1.125rem',
                       fontWeight: '600',
                       color: 'var(--cds-text-primary, #161616)',
                       marginTop: 'var(--cds-spacing-05, 1rem)',
@@ -882,6 +910,230 @@ const Dashboard = () => {
             </Grid>
           </Tile>
         )}
+
+        {/* Upcoming Events */}
+        <Tile style={{
+          padding: 'var(--cds-spacing-06, 1.5rem)',
+          marginBottom: 'var(--cds-spacing-05, 1rem)',
+          backgroundColor: 'var(--cds-layer-01, #ffffff)',
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 'var(--cds-spacing-05, 1rem)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Events size={24} style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
+              <h3 style={{
+                fontSize: '1.75rem',
+                fontWeight: '300',
+                margin: 0,
+                color: 'var(--cds-text-primary, #161616)',
+              }}>
+                Upcoming Events
+              </h3>
+            </div>
+            {isAdmin && (
+              <Button
+                size="sm"
+                kind="ghost"
+                renderIcon={isEditingEvents ? Save : Edit}
+                iconDescription={isEditingEvents ? "Save" : "Edit"}
+                onClick={() => isEditingEvents ? saveEvents() : setIsEditingEvents(true)}
+              >
+                {isEditingEvents ? 'Save' : 'Edit'}
+              </Button>
+            )}
+          </div>
+
+          {upcomingEvents.length > 0 ? (
+            <DataTable
+              rows={upcomingEvents.map((e, i) => ({ id: i, event: e.event, month: e.month }))}
+              headers={[
+                { key: 'event', header: 'Event' },
+                { key: 'month', header: 'Month' }
+              ]}
+            >
+              {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
+                <TableContainer>
+                  <Table {...getTableProps()} size="md">
+                    <TableHead>
+                      <TableRow>
+                        {headers.map(h => (
+                          <TableHeader {...getHeaderProps({ header: h })} key={h.key}>
+                            {h.header}
+                          </TableHeader>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {rows.map((row, idx) => (
+                        <TableRow {...getRowProps({ row })} key={row.id}>
+                          <TableCell>
+                            {isEditingEvents ? (
+                              <TextInput
+                                id={`event-${idx}`}
+                                labelText=""
+                                value={upcomingEvents[idx].event}
+                                onChange={(e) => handleEventChange(idx, 'event', e.target.value)}
+                              />
+                            ) : (
+                              row.cells[0].value
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {isEditingEvents ? (
+                              <TextInput
+                                id={`month-${idx}`}
+                                labelText=""
+                                value={upcomingEvents[idx].month}
+                                onChange={(e) => handleEventChange(idx, 'month', e.target.value)}
+                              />
+                            ) : (
+                              row.cells[1].value
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </DataTable>
+          ) : (
+            <div style={{
+              textAlign: 'center',
+              padding: 'var(--cds-spacing-06, 1.5rem)',
+              color: 'var(--cds-text-secondary, #525252)',
+            }}>
+              No upcoming events scheduled
+            </div>
+          )}
+        </Tile>
+
+        {/* Past Events */}
+        <Tile style={{
+          padding: 'var(--cds-spacing-06, 1.5rem)',
+          marginBottom: 'var(--cds-spacing-05, 1rem)',
+          backgroundColor: 'var(--cds-layer-01, #ffffff)',
+        }}>
+          <h3 style={{
+            fontSize: '1.75rem',
+            fontWeight: '300',
+            margin: '0 0 var(--cds-spacing-05, 1rem) 0',
+            color: 'var(--cds-text-primary, #161616)',
+          }}>
+            Past Events
+          </h3>
+
+          {matches.filter(m => (m.match_type === 'final' || (m.match_type === 'playoff' && m.playoff_position?.startsWith('F'))) && m.match_status === 'played').length > 0 ? (
+            <Accordion>
+              {matches
+                .filter(m => (m.match_type === 'final' || (m.match_type === 'playoff' && m.playoff_position?.startsWith('F'))) && m.match_status === 'played')
+                .map((match, index) => {
+                  // Extract month from match_date (YYYY-MM-DD format)
+                  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                     'July', 'August', 'September', 'October', 'November', 'December'];
+                  let displayMonth = 'Unknown';
+                  if (match.match_date) {
+                    const dateParts = match.match_date.split('-');
+                    if (dateParts.length >= 2) {
+                      const monthIndex = parseInt(dateParts[1]) - 1;
+                      displayMonth = `${monthNames[monthIndex]} ${dateParts[0]}`;
+                    }
+                  }
+                  
+                  return (
+                    <AccordionItem
+                      key={index}
+                      title={`${match.event.charAt(0).toUpperCase() + match.event.slice(1)} - ${displayMonth}`}
+                    >
+                      <div style={{ padding: 'var(--cds-spacing-05, 1rem)' }}>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: 'var(--cds-spacing-04, 0.75rem)',
+                          backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                          borderRadius: '4px',
+                          marginBottom: 'var(--cds-spacing-04, 0.75rem)',
+                        }}>
+                          <div>
+                            <div style={{ fontWeight: '600', fontSize: '1rem', marginBottom: 'var(--cds-spacing-02, 0.25rem)' }}>
+                              Final Match
+                            </div>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--cds-text-secondary, #525252)' }}>
+                              {match.match_date} {match.match_time && `• ${match.match_time}`}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: 'var(--cds-spacing-05, 1rem)',
+                          backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                          borderRadius: '4px',
+                        }}>
+                          <div style={{ flex: 1, textAlign: 'center' }}>
+                            <div style={{
+                              fontSize: '1.125rem',
+                              fontWeight: match.team1_score > match.team2_score ? '600' : '400',
+                              color: 'var(--cds-text-primary, #161616)',
+                            }}>
+                              {match.team1}-{match.team1_subid}
+                            </div>
+                          </div>
+                          <div style={{
+                            padding: 'var(--cds-spacing-04, 0.75rem) var(--cds-spacing-05, 1rem)',
+                            backgroundColor: 'var(--cds-layer-01, #ffffff)',
+                            border: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
+                            fontSize: '1.5rem',
+                            fontWeight: '600',
+                            margin: '0 var(--cds-spacing-05, 1rem)',
+                          }}>
+                            {match.team1_score} – {match.team2_score}
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'center' }}>
+                            <div style={{
+                              fontSize: '1.125rem',
+                              fontWeight: match.team2_score > match.team1_score ? '600' : '400',
+                              color: 'var(--cds-text-primary, #161616)',
+                            }}>
+                              {match.team2}-{match.team2_subid}
+                            </div>
+                          </div>
+                        </div>
+                        {match.team1_score !== match.team2_score && (
+                          <div style={{
+                            marginTop: 'var(--cds-spacing-04, 0.75rem)',
+                            padding: 'var(--cds-spacing-04, 0.75rem)',
+                            backgroundColor: 'var(--cds-support-success-inverse, #e8f5e9)',
+                            borderRadius: '4px',
+                            textAlign: 'center',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            color: 'var(--cds-support-success, #24a148)',
+                          }}>
+                            Winner: {match.team1_score > match.team2_score ? `${match.team1}-${match.team1_subid}` : `${match.team2}-${match.team2_subid}`}
+                          </div>
+                        )}
+                      </div>
+                    </AccordionItem>
+                  );
+                })}
+            </Accordion>
+          ) : (
+            <div style={{
+              textAlign: 'center',
+              padding: 'var(--cds-spacing-06, 1.5rem)',
+              color: 'var(--cds-text-secondary, #525252)',
+            }}>
+              No past finals available
+            </div>
+          )}
+        </Tile>
       </div>
     </div>
   );

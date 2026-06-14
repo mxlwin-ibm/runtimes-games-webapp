@@ -47,6 +47,10 @@ export const getPointsTable = (params) => {
   return api.get(`/points-table/${queryString ? `?${queryString}` : ""}`);
 };
 
+// Events API
+export const getEvents = () => api.get("/events/");
+export const updateEvents = (events) => api.put("/events/", events);
+
 export default api;
 
 // Made with Bob
