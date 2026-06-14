@@ -39,20 +39,38 @@ const EVENTS = [
 
 const POOLS = ["All Pools", "Pool A", "Pool B", "Pool C", "Pool D"];
 
-const headers = [
+// Events that use goal-based scoring (GF/GA/GD)
+const GOAL_BASED_EVENTS = ["Foosball", "Football"];
+
+// Base headers for all events
+const baseHeaders = [
   { key: "rank", header: "Rank" },
   { key: "team_id", header: "Players" },
   { key: "team_name", header: "Team Name" },
   { key: "played", header: "Played" },
   { key: "won", header: "Won" },
   { key: "lost", header: "Lost" },
+];
+
+// Goal-based headers (only for Foosball and Football)
+const goalHeaders = [
   { key: "gf", header: "GF" },
   { key: "ga", header: "GA" },
   { key: "gd", header: "GD" },
-  { key: "points", header: "Points" },
 ];
 
-const PoolTable = ({ title, standings }) => {
+// Points header (always shown)
+const pointsHeader = { key: "points", header: "Points" };
+
+// Function to get headers based on event type
+const getHeadersForEvent = (event) => {
+  const isGoalBased = GOAL_BASED_EVENTS.includes(event);
+  return isGoalBased
+    ? [...baseHeaders, ...goalHeaders, pointsHeader]
+    : [...baseHeaders, pointsHeader];
+};
+
+const PoolTable = ({ title, standings, headers }) => {
   const standingsMap = useMemo(
     () => new Map(standings.map((team) => [team.id, team])),
     [standings]
@@ -139,6 +157,9 @@ const PointTable = () => {
   const [toast, setToast] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState("Foosball");
   const [selectedPool, setSelectedPool] = useState("All Pools");
+
+  // Get headers based on selected event
+  const headers = useMemo(() => getHeadersForEvent(selectedEvent), [selectedEvent]);
 
   const fetchPointsTable = useCallback(
     async (isMounted = () => true, showLoader = true) => {
@@ -347,6 +368,7 @@ const PointTable = () => {
               key={pool.title}
               title={pool.title}
               standings={pool.standings}
+              headers={headers}
             />
           ))}
         </>
