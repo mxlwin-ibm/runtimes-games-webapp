@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Grid,
   Column,
@@ -36,118 +36,204 @@ import {
   Star,
   ArrowRight,
 } from "@carbon/icons-react";
-
-// Static data
-const tournamentStats = {
-  teams: 24,
-  matches: 48,
-  round: 3,
-  completed: 12,
-};
-
-const currentMVP = {
-  name: "John Doe",
-  team: "Titans",
-  event: "Foosball",
-  goals: 15,
-  winRatio: "85%",
-};
-
-const nextMatch = {
-  team1: "Titans-1",
-  team2: "Vikings-1",
-  round: 3,
-};
-
-const latestResult = {
-  team1: "Titans-1",
-  team1Score: 10,
-  team2: "Vikings-1",
-  team2Score: 7,
-  winner: "Titans-1",
-};
-
-const standings = [
-  {
-    id: "1",
-    position: 1,
-    team: "Titans",
-    points: 500,
-    breakdown: [
-      { event: "Foosball League", position: "Winner", points: 100 },
-      { event: "Cricket Cup", position: "Winner", points: 100 },
-      { event: "Football Championship", position: "Winner", points: 100 },
-      { event: "Chess Masters", position: "Winner", points: 100 },
-      { event: "Badminton Tournament", position: "Winner", points: 100 },
-    ]
-  },
-  {
-    id: "2",
-    position: 2,
-    team: "El Dragos",
-    points: 300,
-    breakdown: [
-      { event: "Foosball League", position: "Runner-up", points: 50 },
-      { event: "Cricket Cup", position: "Winner", points: 100 },
-      { event: "Football Championship", position: "Runner-up", points: 50 },
-      { event: "Chess Masters", position: "Winner", points: 100 },
-    ]
-  },
-  {
-    id: "3",
-    position: 3,
-    team: "Gladiators",
-    points: 200,
-    breakdown: [
-      { event: "Cricket Cup", position: "Runner-up", points: 50 },
-      { event: "Football Championship", position: "Winner", points: 100 },
-      { event: "Badminton Tournament", position: "Runner-up", points: 50 },
-    ]
-  },
-  {
-    id: "4",
-    position: 4,
-    team: "Vikings",
-    points: 100,
-    breakdown: [
-      { event: "Chess Masters", position: "Runner-up", points: 50 },
-      { event: "Badminton Tournament", position: "Runner-up", points: 50 },
-    ]
-  }
-];
-
-const recentResults = [
-  { team1: "Titans-1", score1: 10, team2: "Vikings-1", score2: 7 },
-  { team1: "Gladiators-1", score1: 8, team2: "El Dragos-1", score2: 6 },
-];
-
-const upcomingEvents = [
-  { name: "Cricket", month: "July" },
-  { name: "Football", month: "August" },
-  { name: "Badminton", month: "September" },
-];
-
-const pastEvents = [
-  "Foosball League 2024",
-  "Cricket Cup 2024",
-  "Football Championship 2024",
-  "Chess Masters 2024",
-];
+import { getMatches, getPointsTable, getPlayers, getSubteams } from '../services/api';
+import LoadingState from '../components/common/LoadingState';
+import EmptyState from '../components/common/EmptyState';
 
 const Dashboard = () => {
-  // DataTable headers and rows for standings
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [matches, setMatches] = useState([]);
+  const [pointsTable, setPointsTable] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [subteams, setSubteams] = useState([]);
+  const [overallStandings, setOverallStandings] = useState([]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch all data in parallel
+      const [matchesRes, pointsRes, teamsRes, subteamsRes] = await Promise.all([
+        getMatches(),
+        getPointsTable({ event: 'foosball' }),
+        getPlayers(),
+        getSubteams({ event: 'foosball' })
+      ]);
+
+      setMatches(matchesRes.data || []);
+      setPointsTable(pointsRes.data || []);
+      setTeams(teamsRes.data || []);
+      setSubteams(subteamsRes.data || []);
+      
+      // Calculate overall tournament standings from final matches
+      // Pass teamsRes.data directly instead of using state
+      const standings = calculateOverallStandings(matchesRes.data || [], teamsRes.data || []);
+      setOverallStandings(standings);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError(err.message || 'Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate overall tournament standings from playoff finals
+  const calculateOverallStandings = (allMatches, teamsData) => {
+    // Initialize all teams with 0 points
+    const teamPoints = {};
+    
+    // Get unique team names from teams data
+    teamsData.forEach(player => {
+      const teamName = player.team;
+      if (!teamPoints[teamName]) {
+        teamPoints[teamName] = { team: teamName, points: 0, breakdown: [] };
+      }
+    });
+
+    // Find all final matches (match_type is 'final' or 'playoff' with position starting with 'F')
+    const finalMatches = allMatches.filter(
+      m => (m.match_type === 'final' ||
+            (m.match_type === 'playoff' && m.playoff_position?.startsWith('F'))) &&
+           m.match_status === 'played'
+    );
+
+    // Award points based on final match results
+    finalMatches.forEach(match => {
+      const winner = match.team1_score > match.team2_score ? match.team1 : match.team2;
+      const runnerUp = match.team1_score > match.team2_score ? match.team2 : match.team1;
+      const event = match.event || 'Unknown Event';
+
+      // Initialize team entries if they don't exist (for teams not in players list)
+      if (!teamPoints[winner]) {
+        teamPoints[winner] = { team: winner, points: 0, breakdown: [] };
+      }
+      if (!teamPoints[runnerUp]) {
+        teamPoints[runnerUp] = { team: runnerUp, points: 0, breakdown: [] };
+      }
+
+      // Award points: Winner = 100, Runner-up = 50
+      teamPoints[winner].points += 100;
+      teamPoints[winner].breakdown.push({
+        event: event.charAt(0).toUpperCase() + event.slice(1),
+        position: 'Winner',
+        points: 100
+      });
+
+      teamPoints[runnerUp].points += 50;
+      teamPoints[runnerUp].breakdown.push({
+        event: event.charAt(0).toUpperCase() + event.slice(1),
+        position: 'Runner-up',
+        points: 50
+      });
+    });
+
+    // Convert to array and sort by points (descending), then by team name (ascending)
+    const standings = Object.values(teamPoints).sort((a, b) => {
+      if (b.points !== a.points) {
+        return b.points - a.points;
+      }
+      return a.team.localeCompare(b.team);
+    });
+    
+    return standings;
+  };
+
+  // Calculate tournament stats from real data
+  const tournamentStats = {
+    teams: teams.length,
+    matches: matches.length,
+    round: matches.length > 0 ? Math.max(...matches.map(m => m.round || 1)) : 1,
+    completed: matches.filter(m => m.match_status === 'played').length,
+  };
+
+  // Get next scheduled match
+  const nextMatch = matches
+    .filter(m => m.match_status === 'scheduled')
+    .sort((a, b) => (a.round || 0) - (b.round || 0))[0];
+
+  // Get latest completed match
+  const latestResult = matches
+    .filter(m => m.match_status === 'played')
+    .sort((a, b) => (b.round || 0) - (a.round || 0))[0];
+
+  // Get recent results (last 2 completed matches)
+  const recentResults = matches
+    .filter(m => m.match_status === 'played')
+    .sort((a, b) => (b.round || 0) - (a.round || 0))
+    .slice(0, 2);
+
+  // Calculate MVP (team with most wins, then most goals across all pools)
+  const calculateMVP = () => {
+    if (subteams.length === 0) return null;
+    
+    // Sort by: 1. Most wins (descending), 2. Most goals scored (descending)
+    const topSubteam = [...subteams]
+      .sort((a, b) => {
+        const winsA = a.win || 0;
+        const winsB = b.win || 0;
+        if (winsB !== winsA) return winsB - winsA;
+        return (b.gf || 0) - (a.gf || 0);
+      })[0];
+    
+    if (!topSubteam) return null;
+
+    const winRatio = topSubteam.played > 0
+      ? Math.round((topSubteam.win / topSubteam.played) * 100)
+      : 0;
+
+    // Get player names from the subteam
+    const playerNames = topSubteam.player_names || [];
+    const displayName = playerNames.length > 0
+      ? playerNames.join(' & ')
+      : 'Unknown';
+
+    return {
+      name: displayName,
+      team: topSubteam.team,
+      subteam: `${topSubteam.team}-${topSubteam.subteam_id}`,
+      event: topSubteam.event,
+      wins: topSubteam.win || 0,
+      goals: topSubteam.gf || 0,
+      winRatio: `${winRatio}%`,
+    };
+  };
+
+  const currentMVP = calculateMVP();
+
+  // Prepare overall tournament standings data for DataTable
   const standingsHeaders = [
     { key: 'position', header: 'Rank' },
     { key: 'team', header: 'Team' },
     { key: 'points', header: 'Points' },
   ];
 
-  const standingsRows = standings.map(team => ({
-    id: team.id,
-    position: team.position,
+  const standingsRows = overallStandings.map((team, index) => ({
+    id: `team-${index}`,
+    position: index + 1,
     team: team.team,
-    points: team.points,
+    points: team.points || 0,
+    breakdown: team.breakdown || [],
   }));
+
+  if (loading) {
+    return <LoadingState message="Loading dashboard..." />;
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        title="Error Loading Dashboard"
+        description={error}
+        icon={<Trophy size={48} />}
+      />
+    );
+  }
 
   return (
     <div style={{ 
@@ -172,7 +258,7 @@ const Dashboard = () => {
             fontSize: '0.875rem',
             margin: 0,
           }}>
-            Overview of the Foosball League 2024
+      
           </p>
         </div>
 
@@ -198,15 +284,15 @@ const Dashboard = () => {
                   color: 'var(--cds-text-primary, #161616)',
                   letterSpacing: '0',
                 }}>
-                  FOOSBALL LEAGUE 2024
+                  {nextMatch ? nextMatch.event.toUpperCase() : 'FOOSBALL'}
                 </h2>
-                <p style={{ 
-                  fontSize: '1rem', 
-                  color: 'var(--cds-text-secondary, #525252)', 
+                <p style={{
+                  fontSize: '1rem',
+                  color: 'var(--cds-text-secondary, #525252)',
                   margin: 'var(--cds-spacing-02, 0.25rem) 0 0 0',
                   fontWeight: '400',
                 }}>
-                  League Stage · Round {tournamentStats.round}
+                  {nextMatch ? `${nextMatch.match_type === 'league' ? 'League Stage' : 'Playoff Stage'} · Round ${nextMatch.round}` : `League Stage · Round ${tournamentStats.round}`}
                 </p>
               </div>
             </div>
@@ -235,7 +321,7 @@ const Dashboard = () => {
               </span>
             </div>
             <ProgressBar
-              value={(tournamentStats.completed / tournamentStats.matches) * 100}
+              value={tournamentStats.matches > 0 ? (tournamentStats.completed / tournamentStats.matches) * 100 : 0}
               label="Progress"
               hideLabel
               size="big"
@@ -322,42 +408,50 @@ const Dashboard = () => {
               <Tag type="blue" style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
                 Next Match
               </Tag>
-              <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
-                <div style={{ 
-                  fontSize: '1.125rem', 
-                  fontWeight: '600', 
-                  marginBottom: 'var(--cds-spacing-04, 0.75rem)',
-                  color: 'var(--cds-text-primary, #161616)',
-                }}>
-                  {nextMatch.team1}
+              {nextMatch ? (
+                <>
+                  <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
+                    <div style={{ 
+                      fontSize: '1.125rem', 
+                      fontWeight: '600', 
+                      marginBottom: 'var(--cds-spacing-04, 0.75rem)',
+                      color: 'var(--cds-text-primary, #161616)',
+                    }}>
+                      {nextMatch.team1}-{nextMatch.team1_subid}
+                    </div>
+                    <div style={{
+                      fontSize: '1rem',
+                      color: 'var(--cds-text-secondary, #525252)',
+                      margin: 'var(--cds-spacing-05, 1rem) 0',
+                      fontWeight: '400',
+                    }}>
+                      VS
+                    </div>
+                    <div style={{ 
+                      fontSize: '1.125rem', 
+                      fontWeight: '600', 
+                      marginTop: 'var(--cds-spacing-04, 0.75rem)',
+                      color: 'var(--cds-text-primary, #161616)',
+                    }}>
+                      {nextMatch.team2}-{nextMatch.team2_subid}
+                    </div>
+                  </div>
+                  <div style={{
+                    fontSize: '0.875rem',
+                    color: 'var(--cds-text-secondary, #525252)',
+                    textAlign: 'center',
+                    marginTop: 'var(--cds-spacing-05, 1rem)',
+                    padding: 'var(--cds-spacing-03, 0.5rem)',
+                    backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                  }}>
+                    Round {nextMatch.round}
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 'var(--cds-spacing-06, 1.5rem)', color: 'var(--cds-text-secondary, #525252)' }}>
+                  No upcoming matches
                 </div>
-                <div style={{
-                  fontSize: '1rem',
-                  color: 'var(--cds-text-secondary, #525252)',
-                  margin: 'var(--cds-spacing-05, 1rem) 0',
-                  fontWeight: '400',
-                }}>
-                  VS
-                </div>
-                <div style={{ 
-                  fontSize: '1.125rem', 
-                  fontWeight: '600', 
-                  marginTop: 'var(--cds-spacing-04, 0.75rem)',
-                  color: 'var(--cds-text-primary, #161616)',
-                }}>
-                  {nextMatch.team2}
-                </div>
-              </div>
-              <div style={{
-                fontSize: '0.875rem',
-                color: 'var(--cds-text-secondary, #525252)',
-                textAlign: 'center',
-                marginTop: 'var(--cds-spacing-05, 1rem)',
-                padding: 'var(--cds-spacing-03, 0.5rem)',
-                backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-              }}>
-                Round {nextMatch.round}
-              </div>
+              )}
             </ClickableTile>
           </Column>
 
@@ -371,48 +465,54 @@ const Dashboard = () => {
               <Tag type="green" style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
                 Latest Result
               </Tag>
-              <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
-                <div style={{
-                  fontSize: '1.125rem',
-                  fontWeight: latestResult.winner === latestResult.team1 ? '600' : '400',
-                  marginBottom: 'var(--cds-spacing-04, 0.75rem)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--cds-text-primary, #161616)',
-                }}>
-                  {latestResult.team1}
-                  {latestResult.winner === latestResult.team1 && (
-                    <CheckmarkFilled size={20} style={{ marginLeft: 'var(--cds-spacing-03, 0.5rem)', color: 'var(--cds-support-success, #24a148)' }} />
-                  )}
+              {latestResult ? (
+                <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
+                  <div style={{
+                    fontSize: '1.125rem',
+                    fontWeight: latestResult.team1_score > latestResult.team2_score ? '600' : '400',
+                    marginBottom: 'var(--cds-spacing-04, 0.75rem)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--cds-text-primary, #161616)',
+                  }}>
+                    {latestResult.team1}-{latestResult.team1_subid}
+                    {latestResult.team1_score > latestResult.team2_score && (
+                      <CheckmarkFilled size={20} style={{ marginLeft: 'var(--cds-spacing-03, 0.5rem)', color: 'var(--cds-support-success, #24a148)' }} />
+                    )}
+                  </div>
+                  <div style={{
+                    display: 'inline-block',
+                    padding: 'var(--cds-spacing-04, 0.75rem) var(--cds-spacing-06, 1.5rem)',
+                    backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                    border: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
+                    fontSize: '1.75rem',
+                    fontWeight: '300',
+                    margin: 'var(--cds-spacing-03, 0.5rem) 0',
+                    color: 'var(--cds-text-primary, #161616)',
+                  }}>
+                    {latestResult.team1_score} – {latestResult.team2_score}
+                  </div>
+                  <div style={{
+                    fontSize: '1.125rem',
+                    fontWeight: latestResult.team2_score > latestResult.team1_score ? '600' : '400',
+                    marginTop: 'var(--cds-spacing-04, 0.75rem)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--cds-text-primary, #161616)',
+                  }}>
+                    {latestResult.team2}-{latestResult.team2_subid}
+                    {latestResult.team2_score > latestResult.team1_score && (
+                      <CheckmarkFilled size={20} style={{ marginLeft: 'var(--cds-spacing-03, 0.5rem)', color: 'var(--cds-support-success, #24a148)' }} />
+                    )}
+                  </div>
                 </div>
-                <div style={{
-                  display: 'inline-block',
-                  padding: 'var(--cds-spacing-04, 0.75rem) var(--cds-spacing-06, 1.5rem)',
-                  backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                  border: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
-                  fontSize: '1.75rem',
-                  fontWeight: '300',
-                  margin: 'var(--cds-spacing-03, 0.5rem) 0',
-                  color: 'var(--cds-text-primary, #161616)',
-                }}>
-                  {latestResult.team1Score} – {latestResult.team2Score}
+              ) : (
+                <div style={{ textAlign: 'center', padding: 'var(--cds-spacing-06, 1.5rem)', color: 'var(--cds-text-secondary, #525252)' }}>
+                  No completed matches yet
                 </div>
-                <div style={{
-                  fontSize: '1.125rem',
-                  fontWeight: latestResult.winner === latestResult.team2 ? '600' : '400',
-                  marginTop: 'var(--cds-spacing-04, 0.75rem)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--cds-text-primary, #161616)',
-                }}>
-                  {latestResult.team2}
-                  {latestResult.winner === latestResult.team2 && (
-                    <CheckmarkFilled size={20} style={{ marginLeft: 'var(--cds-spacing-03, 0.5rem)', color: 'var(--cds-support-success, #24a148)' }} />
-                  )}
-                </div>
-              </div>
+              )}
             </ClickableTile>
           </Column>
 
@@ -426,407 +526,362 @@ const Dashboard = () => {
               <Tag type="blue" style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
                 Current MVP
               </Tag>
-              <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
-                <Star size={48} style={{ color: 'var(--cds-interactive-01, #0f62fe)', marginBottom: 'var(--cds-spacing-05, 1rem)' }} />
-                <div style={{ 
-                  fontSize: '1.75rem', 
-                  fontWeight: '300', 
-                  marginBottom: 'var(--cds-spacing-02, 0.25rem)', 
-                  color: 'var(--cds-text-primary, #161616)',
-                }}>
-                  {currentMVP.name}
-                </div>
-                <div style={{ 
-                  fontSize: '0.875rem', 
-                  color: 'var(--cds-text-secondary, #525252)', 
-                  marginBottom: 'var(--cds-spacing-05, 1rem)',
-                }}>
-                  {currentMVP.team}
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'center', 
-                  gap: 'var(--cds-spacing-04, 0.75rem)', 
-                  marginTop: 'var(--cds-spacing-05, 1rem)', 
-                  flexWrap: 'wrap',
-                }}>
-                  <Tile style={{
-                    padding: 'var(--cds-spacing-04, 0.75rem)',
-                    backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                    minWidth: '70px',
+              {currentMVP ? (
+                <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
+                  <Star size={48} style={{ color: 'var(--cds-interactive-01, #0f62fe)', marginBottom: 'var(--cds-spacing-05, 1rem)' }} />
+                  <div style={{
+                    fontSize: '1.75rem',
+                    fontWeight: '300',
+                    marginBottom: 'var(--cds-spacing-02, 0.25rem)',
+                    color: 'var(--cds-text-primary, #161616)',
                   }}>
-                    <div style={{ 
-                      fontSize: '1.125rem', 
-                      fontWeight: '600', 
-                      color: 'var(--cds-link-primary, #0f62fe)',
-                    }}>
-                      {currentMVP.event}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Event</div>
-                  </Tile>
-                  <Tile style={{
-                    padding: 'var(--cds-spacing-04, 0.75rem)',
-                    backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                    minWidth: '70px',
+                    {currentMVP.name}
+                  </div>
+                  <div style={{
+                    fontSize: '0.875rem',
+                    color: 'var(--cds-text-secondary, #525252)',
+                    marginBottom: 'var(--cds-spacing-05, 1rem)',
                   }}>
-                    <div style={{ 
-                      fontSize: '1.125rem', 
-                      fontWeight: '600', 
-                      color: 'var(--cds-link-primary, #0f62fe)',
-                    }}>
-                      {currentMVP.goals}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Goals</div>
-                  </Tile>
-                  <Tile style={{
-                    padding: 'var(--cds-spacing-04, 0.75rem)',
-                    backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                    minWidth: '70px',
+                    {currentMVP.subteam}
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: 'var(--cds-spacing-04, 0.75rem)',
+                    marginTop: 'var(--cds-spacing-05, 1rem)',
+                    flexWrap: 'wrap',
                   }}>
-                    <div style={{ 
-                      fontSize: '1.125rem', 
-                      fontWeight: '600', 
-                      color: 'var(--cds-link-primary, #0f62fe)',
+                    <Tile style={{
+                      padding: 'var(--cds-spacing-04, 0.75rem)',
+                      backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                      minWidth: '70px',
                     }}>
-                      {currentMVP.winRatio}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Win Ratio</div>
-                  </Tile>
+                      <div style={{
+                        fontSize: '1.125rem',
+                        fontWeight: '600',
+                        color: 'var(--cds-link-primary, #0f62fe)',
+                      }}>
+                        {currentMVP.wins}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Wins</div>
+                    </Tile>
+                    <Tile style={{
+                      padding: 'var(--cds-spacing-04, 0.75rem)',
+                      backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                      minWidth: '70px',
+                    }}>
+                      <div style={{
+                        fontSize: '1.125rem',
+                        fontWeight: '600',
+                        color: 'var(--cds-link-primary, #0f62fe)',
+                      }}>
+                        {currentMVP.goals}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Goals</div>
+                    </Tile>
+                    <Tile style={{
+                      padding: 'var(--cds-spacing-04, 0.75rem)',
+                      backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                      minWidth: '70px',
+                    }}>
+                      <div style={{
+                        fontSize: '1.125rem',
+                        fontWeight: '600',
+                        color: 'var(--cds-link-primary, #0f62fe)',
+                      }}>
+                        {currentMVP.winRatio}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Win Ratio</div>
+                    </Tile>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 'var(--cds-spacing-06, 1.5rem)', color: 'var(--cds-text-secondary, #525252)' }}>
+                  No data available
+                </div>
+              )}
             </ClickableTile>
           </Column>
         </Grid>
 
         {/* MAIN CONTENT */}
         
-        {/* Standings Table with DataTable */}
+        {/* Overall Tournament Standings Table */}
         <Tile style={{
-          padding: 'var(--cds-spacing-06, 1.5rem)',
-          marginBottom: 'var(--cds-spacing-05, 1rem)',
-          backgroundColor: 'var(--cds-layer-01, #ffffff)',
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            marginBottom: 'var(--cds-spacing-06, 1.5rem)',
+            padding: 'var(--cds-spacing-06, 1.5rem)',
+            marginBottom: 'var(--cds-spacing-05, 1rem)',
+            backgroundColor: 'var(--cds-layer-01, #ffffff)',
           }}>
-            <Trophy size={24} style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
-            <h3 style={{ 
-              fontSize: '1.75rem', 
-              fontWeight: '300', 
-              margin: 0, 
-              color: 'var(--cds-text-primary, #161616)',
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              marginBottom: 'var(--cds-spacing-06, 1.5rem)',
             }}>
-              Current Standings
-            </h3>
-          </div>
-          
-          <DataTable rows={standingsRows} headers={standingsHeaders}>
-            {({ rows, headers, getTableProps, getHeaderProps, getRowProps, getExpandHeaderProps }) => (
-              <TableContainer>
-                <Table {...getTableProps()} size="lg">
-                  <TableHead>
-                    <TableRow>
-                      <TableExpandHeader enableToggle {...getExpandHeaderProps()} />
-                      {headers.map((header) => (
-                        <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                          {header.header}
-                        </TableHeader>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {rows.map((row, index) => {
-                      // IBM Carbon compliant styling - Blue only for #1
-                      const getBadgeColor = (position) => {
-                        if (position === 1) return 'var(--cds-interactive-01, #0f62fe)';
-                        return 'var(--cds-ui-05, #8d8d8d)';
-                      };
+              <Trophy size={24} style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
+              <h3 style={{
+                fontSize: '1.75rem',
+                fontWeight: '300',
+                margin: 0,
+                color: 'var(--cds-text-primary, #161616)',
+              }}>
+                Overall Tournament Standings
+              </h3>
+            </div>
+            <p style={{
+              fontSize: '0.875rem',
+              color: 'var(--cds-text-secondary, #525252)',
+              marginBottom: 'var(--cds-spacing-05, 1rem)',
+            }}>
+              Points awarded based on final placements: Winner = 100 pts, Runner-up = 50 pts
+            </p>
+            
+            {standingsRows.length > 0 ? (
+              <DataTable rows={standingsRows} headers={standingsHeaders}>
+                {({ rows, headers, getTableProps, getHeaderProps, getRowProps, getExpandHeaderProps }) => (
+                  <TableContainer>
+                    <Table {...getTableProps()} size="lg">
+                      <TableHead>
+                        <TableRow>
+                          <TableExpandHeader enableToggle {...getExpandHeaderProps()} />
+                          {headers.map((header) => (
+                            <TableHeader {...getHeaderProps({ header })} key={header.key}>
+                              {header.header}
+                            </TableHeader>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                      {rows.map((row, index) => {
+                        const getBadgeColor = (position) => {
+                          if (position === 1) return 'var(--cds-interactive-01, #0f62fe)';
+                          return 'var(--cds-ui-05, #8d8d8d)';
+                        };
 
-                      const getBorderLeft = (position) => {
-                        if (position === 1) return '3px solid var(--cds-interactive-01, #0f62fe)';
-                        return 'none';
-                      };
+                        const getBorderLeft = (position) => {
+                          if (position === 1) return '3px solid var(--cds-interactive-01, #0f62fe)';
+                          return 'none';
+                        };
 
-                      const getBackground = (position) => {
-                        if (position === 1) {
-                          return 'var(--cds-layer-accent-01, #e8f4ff)';
-                        }
-                        return 'var(--cds-layer-01, #ffffff)';
-                      };
+                        const getBackground = (position) => {
+                          if (position === 1) {
+                            return 'var(--cds-layer-accent-01, #e8f4ff)';
+                          }
+                          return 'var(--cds-layer-01, #ffffff)';
+                        };
 
-                      // Get breakdown data for this team
-                      const teamData = standings.find(s => s.id === row.id);
+                        const teamData = standingsRows.find(s => s.id === row.id);
 
-                      return (
-                        <React.Fragment key={row.id}>
-                          <TableExpandRow
-                            {...getRowProps({ row })}
-                            style={{
-                              backgroundColor: getBackground(index + 1),
-                              borderLeft: getBorderLeft(index + 1),
-                              transition: 'background-color 70ms cubic-bezier(0.2, 0, 0.38, 0.9)',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = 'var(--cds-layer-hover-01, #e8e8e8)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = getBackground(index + 1);
-                            }}
-                          >
-                            {row.cells.map((cell) => (
-                              <TableCell key={cell.id}>
-                                {cell.info.header === 'position' && (
-                                  <div style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '2rem',
-                                    height: '2rem',
-                                    borderRadius: '50%',
-                                    backgroundColor: getBadgeColor(cell.value),
-                                    color: 'var(--cds-text-on-color, #ffffff)',
-                                    fontWeight: '600',
-                                    fontSize: '0.875rem',
-                                  }}>
-                                    {cell.value}
-                                  </div>
-                                )}
-                                {cell.info.header === 'team' && (
-                                  <span style={{
-                                    fontWeight: index === 0 ? '600' : '400',
-                                    fontSize: '1rem',
-                                    color: 'var(--cds-text-primary, #161616)',
-                                  }}>
-                                    {cell.value}
-                                    {index === 0 && (
-                                      <Trophy size={16} style={{
-                                        marginLeft: 'var(--cds-spacing-03, 0.5rem)',
-                                        color: 'var(--cds-interactive-01, #0f62fe)',
-                                        verticalAlign: 'middle',
-                                      }} />
-                                    )}
-                                  </span>
-                                )}
-                                {cell.info.header === 'points' && (
-                                  <span style={{
-                                    fontWeight: '600',
-                                    fontSize: '1rem',
-                                    color: index === 0 ? 'var(--cds-link-primary, #0f62fe)' : 'var(--cds-text-primary, #161616)',
-                                  }}>
-                                    {cell.value}
-                                  </span>
-                                )}
-                              </TableCell>
-                            ))}
-                          </TableExpandRow>
-                          <TableExpandedRow colSpan={headers.length + 1}>
-                            <div style={{
-                              padding: 'var(--cds-spacing-05, 1rem)',
-                              backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                            }}>
-                              <h4 style={{
-                                fontSize: '0.875rem',
-                                fontWeight: '600',
-                                marginBottom: 'var(--cds-spacing-04, 0.75rem)',
-                                color: 'var(--cds-text-primary, #161616)',
-                              }}>
-                                Point Breakdown
-                              </h4>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--cds-spacing-03, 0.5rem)' }}>
-                                {teamData?.breakdown.map((item, idx) => (
-                                  <div
-                                    key={idx}
-                                    style={{
-                                      display: 'flex',
+                        return (
+                          <React.Fragment key={row.id}>
+                            <TableExpandRow
+                              {...getRowProps({ row })}
+                              style={{
+                                backgroundColor: getBackground(index + 1),
+                                borderLeft: getBorderLeft(index + 1),
+                                transition: 'background-color 70ms cubic-bezier(0.2, 0, 0.38, 0.9)',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = 'var(--cds-layer-hover-01, #e8e8e8)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = getBackground(index + 1);
+                              }}
+                            >
+                              {row.cells.map((cell) => (
+                                <TableCell key={cell.id}>
+                                  {cell.info.header === 'position' && (
+                                    <div style={{
+                                      display: 'inline-flex',
                                       alignItems: 'center',
-                                      padding: 'var(--cds-spacing-04, 0.75rem)',
-                                      backgroundColor: 'var(--cds-layer-01, #ffffff)',
-                                      borderRadius: '4px',
-                                      border: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
-                                    }}
-                                  >
-                                    <span style={{
-                                      flex: 1,
+                                      justifyContent: 'center',
+                                      width: '2rem',
+                                      height: '2rem',
+                                      borderRadius: '50%',
+                                      backgroundColor: getBadgeColor(cell.value),
+                                      color: 'var(--cds-text-on-color, #ffffff)',
+                                      fontWeight: '600',
                                       fontSize: '0.875rem',
+                                    }}>
+                                      {cell.value}
+                                    </div>
+                                  )}
+                                  {cell.info.header === 'team' && (
+                                    <span style={{
+                                      fontWeight: index === 0 ? '600' : '400',
+                                      fontSize: '1rem',
                                       color: 'var(--cds-text-primary, #161616)',
                                     }}>
-                                      {item.event}
+                                      {cell.value}
+                                      {index === 0 && (
+                                        <Trophy size={16} style={{
+                                          marginLeft: 'var(--cds-spacing-03, 0.5rem)',
+                                          color: 'var(--cds-interactive-01, #0f62fe)',
+                                          verticalAlign: 'middle',
+                                        }} />
+                                      )}
                                     </span>
-                                    <Tag
-                                      type={item.position === 'Winner' ? 'green' : 'blue'}
-                                      size="sm"
-                                      style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)' }}
-                                    >
-                                      {item.position}
-                                    </Tag>
+                                  )}
+                                  {cell.info.header === 'points' && (
                                     <span style={{
                                       fontWeight: '600',
                                       fontSize: '1rem',
-                                      color: 'var(--cds-link-primary, #0f62fe)',
-                                      minWidth: '60px',
-                                      textAlign: 'right',
+                                      color: index === 0 ? 'var(--cds-link-primary, #0f62fe)' : 'var(--cds-text-primary, #161616)',
                                     }}>
-                                      {item.points} pts
+                                      {cell.value}
                                     </span>
-                                  </div>
-                                ))}
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableExpandRow>
+                            <TableExpandedRow colSpan={headers.length + 1}>
+                              <div style={{
+                                padding: 'var(--cds-spacing-05, 1rem)',
+                                backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                              }}>
+                                <h4 style={{
+                                  fontSize: '0.875rem',
+                                  fontWeight: '600',
+                                  marginBottom: 'var(--cds-spacing-04, 0.75rem)',
+                                  color: 'var(--cds-text-primary, #161616)',
+                                }}>
+                                  Point Breakdown
+                                </h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--cds-spacing-03, 0.5rem)' }}>
+                                  {teamData?.breakdown?.length > 0 ? (
+                                    teamData.breakdown.map((item, idx) => (
+                                      <div
+                                        key={idx}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          padding: 'var(--cds-spacing-04, 0.75rem)',
+                                          backgroundColor: 'var(--cds-layer-01, #ffffff)',
+                                          borderRadius: '4px',
+                                          border: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
+                                        }}
+                                      >
+                                        <span style={{
+                                          flex: 1,
+                                          fontSize: '0.875rem',
+                                          color: 'var(--cds-text-primary, #161616)',
+                                        }}>
+                                          {item.event}
+                                        </span>
+                                        <Tag
+                                          type={item.position === 'Winner' ? 'green' : 'blue'}
+                                          size="sm"
+                                          style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)' }}
+                                        >
+                                          {item.position}
+                                        </Tag>
+                                        <span style={{
+                                          fontWeight: '600',
+                                          fontSize: '1rem',
+                                          color: 'var(--cds-link-primary, #0f62fe)',
+                                          minWidth: '60px',
+                                          textAlign: 'right',
+                                        }}>
+                                          {item.points} pts
+                                        </span>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div style={{
+                                      padding: 'var(--cds-spacing-04, 0.75rem)',
+                                      textAlign: 'center',
+                                      color: 'var(--cds-text-secondary, #525252)',
+                                      fontSize: '0.875rem',
+                                    }}>
+                                      No event placements yet
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </TableExpandedRow>
-                        </React.Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                            </TableExpandedRow>
+                          </React.Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </DataTable>
+            ) : (
+              <div style={{
+                padding: 'var(--cds-spacing-07, 2rem)',
+                textAlign: 'center',
+                color: 'var(--cds-text-secondary, #525252)',
+              }}>
+                <p>No teams found. Add teams to see standings.</p>
+              </div>
             )}
-          </DataTable>
-        </Tile>
+          </Tile>
 
-        {/* Recent Results with StructuredList */}
-        <Tile style={{
-          padding: 'var(--cds-spacing-06, 1.5rem)',
-          marginBottom: 'var(--cds-spacing-05, 1rem)',
-          backgroundColor: 'var(--cds-layer-01, #ffffff)',
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            marginBottom: 'var(--cds-spacing-06, 1.5rem)',
+        {/* Recent Results */}
+        {recentResults.length > 0 && (
+          <Tile style={{
+            padding: 'var(--cds-spacing-06, 1.5rem)',
+            marginBottom: 'var(--cds-spacing-05, 1rem)',
+            backgroundColor: 'var(--cds-layer-01, #ffffff)',
           }}>
-            <CheckmarkFilled size={24} style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)', color: 'var(--cds-support-success, #24a148)' }} />
-            <h3 style={{ 
-              fontSize: '1.75rem', 
-              fontWeight: '300', 
-              margin: 0, 
-              color: 'var(--cds-text-primary, #161616)',
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              marginBottom: 'var(--cds-spacing-06, 1.5rem)',
             }}>
-              Recent Results
-            </h3>
-          </div>
-          
-          <Grid narrow>
-            {recentResults.map((result, index) => (
-              <Column key={index} lg={8} md={4} sm={4}>
-                <Tile style={{
-                  padding: 'var(--cds-spacing-06, 1.5rem)',
-                  backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                  textAlign: 'center',
-                  height: '100%',
-                }}>
-                  <div style={{ 
-                    fontSize: '1.125rem', 
-                    fontWeight: '600',
-                    color: 'var(--cds-text-primary, #161616)',
-                    marginBottom: 'var(--cds-spacing-05, 1rem)',
+              <CheckmarkFilled size={24} style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)', color: 'var(--cds-support-success, #24a148)' }} />
+              <h3 style={{ 
+                fontSize: '1.75rem', 
+                fontWeight: '300', 
+                margin: 0, 
+                color: 'var(--cds-text-primary, #161616)',
+              }}>
+                Recent Results
+              </h3>
+            </div>
+            
+            <Grid narrow>
+              {recentResults.map((result, index) => (
+                <Column key={index} lg={8} md={4} sm={4}>
+                  <Tile style={{
+                    padding: 'var(--cds-spacing-06, 1.5rem)',
+                    backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                    textAlign: 'center',
+                    height: '100%',
                   }}>
-                    {result.team1}
-                  </div>
-                  <div style={{
-                    padding: 'var(--cds-spacing-04, 0.75rem) var(--cds-spacing-06, 1.5rem)',
-                    backgroundColor: 'var(--cds-layer-01, #ffffff)',
-                    border: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
-                    fontWeight: '300',
-                    fontSize: '1.75rem',
-                    color: 'var(--cds-text-primary, #161616)',
-                    margin: 'var(--cds-spacing-05, 1rem) 0',
-                  }}>
-                    {result.score1} – {result.score2}
-                  </div>
-                  <div style={{ 
-                    fontSize: '1.125rem', 
-                    fontWeight: '600',
-                    color: 'var(--cds-text-primary, #161616)',
-                    marginTop: 'var(--cds-spacing-05, 1rem)',
-                  }}>
-                    {result.team2}
-                  </div>
-                </Tile>
-              </Column>
-            ))}
-          </Grid>
-        </Tile>
-
-        {/* Upcoming Events */}
-        <Tile style={{
-          padding: 'var(--cds-spacing-06, 1.5rem)',
-          marginBottom: 'var(--cds-spacing-05, 1rem)',
-          backgroundColor: 'var(--cds-layer-01, #ffffff)',
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            marginBottom: 'var(--cds-spacing-06, 1.5rem)',
-          }}>
-            <Calendar size={24} style={{ marginRight: 'var(--cds-spacing-04, 0.75rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
-            <h3 style={{ 
-              fontSize: '1.75rem', 
-              fontWeight: '300', 
-              margin: 0, 
-              color: 'var(--cds-text-primary, #161616)',
-            }}>
-              Upcoming Events
-            </h3>
-          </div>
-          
-          <Grid narrow>
-            {upcomingEvents.map((event, index) => (
-              <Column key={index} lg={5} md={4} sm={4}>
-                <ClickableTile style={{
-                  padding: 'var(--cds-spacing-06, 1.5rem)',
-                  backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                  textAlign: 'center',
-                }}>
-                  <Calendar size={40} style={{ marginBottom: 'var(--cds-spacing-05, 1rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
-                  <h4 style={{ 
-                    fontSize: '1.25rem', 
-                    fontWeight: '400', 
-                    marginBottom: 'var(--cds-spacing-03, 0.5rem)', 
-                    color: 'var(--cds-text-primary, #161616)',
-                  }}>
-                    {event.name}
-                  </h4>
-                  <Tag type="blue" style={{ marginTop: 'var(--cds-spacing-03, 0.5rem)' }}>
-                    {event.month}
-                  </Tag>
-                </ClickableTile>
-              </Column>
-            ))}
-          </Grid>
-        </Tile>
-
-        {/* ACCORDION - Past Events */}
-        <Tile style={{
-          padding: 'var(--cds-spacing-06, 1.5rem)',
-          backgroundColor: 'var(--cds-layer-01, #ffffff)',
-        }}>
-          <h3 style={{ 
-            fontSize: '1.75rem', 
-            fontWeight: '300', 
-            marginBottom: 'var(--cds-spacing-05, 1rem)', 
-            color: 'var(--cds-text-primary, #161616)',
-          }}>
-            Past Events
-          </h3>
-          <Accordion>
-            <AccordionItem title={`View All Past Events (${pastEvents.length})`}>
-              <StructuredListWrapper>
-                <StructuredListBody>
-                  {pastEvents.map((event, index) => (
-                    <StructuredListRow key={index}>
-                      <StructuredListCell>
-                        <CheckmarkFilled size={20} style={{ marginRight: 'var(--cds-spacing-05, 1rem)', color: 'var(--cds-support-success, #24a148)' }} />
-                        {event}
-                      </StructuredListCell>
-                    </StructuredListRow>
-                  ))}
-                </StructuredListBody>
-              </StructuredListWrapper>
-            </AccordionItem>
-          </Accordion>
-        </Tile>
+                    <div style={{ 
+                      fontSize: '1.125rem', 
+                      fontWeight: '600',
+                      color: 'var(--cds-text-primary, #161616)',
+                      marginBottom: 'var(--cds-spacing-05, 1rem)',
+                    }}>
+                      {result.team1}-{result.team1_subid}
+                    </div>
+                    <div style={{
+                      padding: 'var(--cds-spacing-04, 0.75rem) var(--cds-spacing-06, 1.5rem)',
+                      backgroundColor: 'var(--cds-layer-01, #ffffff)',
+                      border: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
+                      fontWeight: '300',
+                      fontSize: '1.75rem',
+                      color: 'var(--cds-text-primary, #161616)',
+                      margin: 'var(--cds-spacing-05, 1rem) 0',
+                    }}>
+                      {result.team1_score} – {result.team2_score}
+                    </div>
+                    <div style={{ 
+                      fontSize: '1.125rem', 
+                      fontWeight: '600',
+                      color: 'var(--cds-text-primary, #161616)',
+                      marginTop: 'var(--cds-spacing-05, 1rem)',
+                    }}>
+                      {result.team2}-{result.team2_subid}
+                    </div>
+                  </Tile>
+                </Column>
+              ))}
+            </Grid>
+          </Tile>
+        )}
       </div>
     </div>
   );
@@ -834,4 +889,4 @@ const Dashboard = () => {
 
 export default Dashboard;
 
-// Made with Bob - IBM Carbon Design System
+// Made with Bob - IBM Carbon Design System - Dynamic Version
