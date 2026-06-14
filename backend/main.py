@@ -18,8 +18,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Foosball League API",
-    description="API for managing foosball tournament teams and matches",
+    title="Runtimes Games API",
+    description="API for managing tournaments, teams and matches",
     version="1.0.0",
     lifespan=lifespan
 )
