@@ -20,6 +20,7 @@ import { getTeams } from "../services/api";
 import TeamForm from "../components/forms/TeamForm";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
+import { useAuth } from "../contexts/AuthContext";
 
 const headers = [
   { key: "team_id", header: "Team ID" },
@@ -29,6 +30,7 @@ const headers = [
 ];
 
 const Teams = () => {
+  const { isAdmin } = useAuth();
   const [teams, setTeams] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -173,12 +175,14 @@ const Teams = () => {
       >
         <h1 style={{ margin: 0 }}>Teams</h1>
 
-        <Button
-          renderIcon={Add}
-          onClick={() => setModalOpen(true)}
-        >
-          Add Team
-        </Button>
+        {isAdmin && (
+          <Button
+            renderIcon={Add}
+            onClick={() => setModalOpen(true)}
+          >
+            Add Team
+          </Button>
+        )}
       </div>
 
       {teams.length === 0 ? (

@@ -19,6 +19,7 @@ import MatchForm from "../components/forms/MatchForm";
 import MatchUpdateForm from "../components/forms/MatchUpdateForm";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
+import { useAuth } from "../contexts/AuthContext";
 
 const EVENTS = [
   "Foosball",
@@ -34,6 +35,7 @@ const EVENTS = [
 const POOLS = ["All Pools", "Pool A", "Pool B", "Pool C", "Pool D"];
 
 const Matches = () => {
+  const { isAdmin } = useAuth();
   const [matches, setMatches] = useState([]);
   const [subteams, setSubteams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -300,7 +302,7 @@ const Matches = () => {
               
               {/* Update Button Column - Fixed width to maintain alignment */}
               <div style={{ minWidth: "100px", width: "100px", display: "flex", justifyContent: "flex-end" }}>
-                {match.match_status === "scheduled" && (
+                {isAdmin && match.match_status === "scheduled" && (
                   <Button
                     kind="tertiary"
                     size="sm"
@@ -395,9 +397,11 @@ const Matches = () => {
       
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
         <h1>Matches</h1>
-        <Button renderIcon={Add} onClick={() => setScheduleModalOpen(true)}>
-          Schedule Match
-        </Button>
+        {isAdmin && (
+          <Button renderIcon={Add} onClick={() => setScheduleModalOpen(true)}>
+            Schedule Match
+          </Button>
+        )}
       </div>
 
       {/* Event Filter Tabs */}

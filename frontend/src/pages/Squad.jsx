@@ -25,6 +25,7 @@ import { getSubteams, getPlayers } from "../services/api";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
 import SquadForm from "../components/forms/SquadForm";
+import { useAuth } from "../contexts/AuthContext";
 
 // Headers for squad table when specific event is selected
 const squadHeaders = [
@@ -51,6 +52,7 @@ const SPORTS = [
 ];
 
 const Squad = () => {
+  const { isAdmin } = useAuth();
   const [squads, setSquads] = useState([]);
   const [players, setPlayers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -248,12 +250,14 @@ const Squad = () => {
         }}
       >
         <h1 style={{ margin: 0 }}>Squads</h1>
-        <Button
-          renderIcon={Add}
-          onClick={() => setModalOpen(true)}
-        >
-          Create Squad
-        </Button>
+        {isAdmin && (
+          <Button
+            renderIcon={Add}
+            onClick={() => setModalOpen(true)}
+          >
+            Create Squad
+          </Button>
+        )}
       </div>
 
       {/* Sport Filter Row - Always visible */}
