@@ -115,6 +115,32 @@ const Matches = () => {
     return filtered;
   }, [matches, selectedEvent, selectedMode, selectedPool, subteams]);
 
+  // Sort matches by date/time, then by round
+  const sortMatchesByDateTime = (matches) => {
+    return [...matches].sort((a, b) => {
+      // First, sort by date if both have dates
+      if (a.match_date && b.match_date) {
+        const dateCompare = a.match_date.localeCompare(b.match_date);
+        if (dateCompare !== 0) return dateCompare;
+        
+        // If dates are equal, sort by time
+        if (a.match_time && b.match_time) {
+          return a.match_time.localeCompare(b.match_time);
+        }
+        // Matches with time come before matches without time
+        if (a.match_time) return -1;
+        if (b.match_time) return 1;
+      }
+      
+      // Matches with dates come before matches without dates
+      if (a.match_date) return -1;
+      if (b.match_date) return 1;
+      
+      // If no dates, sort by round
+      return (a.round || 1) - (b.round || 1);
+    });
+  };
+
   // Group matches by round (for League) or by playoff stage (for Playoffs)
   const matchesByRound = useMemo(() => {
     const grouped = {};
@@ -125,6 +151,12 @@ const Matches = () => {
       }
       grouped[round].push(match);
     });
+    
+    // Sort matches within each round by date/time
+    Object.keys(grouped).forEach((round) => {
+      grouped[round] = sortMatchesByDateTime(grouped[round]);
+    });
+    
     return grouped;
   }, [filteredMatches]);
 
@@ -140,6 +172,12 @@ const Matches = () => {
         grouped[type].push(match);
       }
     });
+    
+    // Sort matches within each playoff stage by date/time
+    Object.keys(grouped).forEach((stage) => {
+      grouped[stage] = sortMatchesByDateTime(grouped[stage]);
+    });
+    
     return grouped;
   }, [filteredMatches]);
 
@@ -171,12 +209,80 @@ const Matches = () => {
       textAlign: "center",
     };
 
+    // Format date and time for enhanced display
+    const formatDateTime = () => {
+      if (!match.match_date && !match.match_time) return null;
+      
+      const result = { date: null, time: null, dayOfWeek: null, isToday: false, isTomorrow: false };
+      
+      if (match.match_date) {
+        const [year, month, day] = match.match_date.split('-');
+        const matchDate = new Date(year, month - 1, day);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        
+        // Check if today or tomorrow
+        const matchDateOnly = new Date(matchDate);
+        matchDateOnly.setHours(0, 0, 0, 0);
+        result.isToday = matchDateOnly.getTime() === today.getTime();
+        result.isTomorrow = matchDateOnly.getTime() === tomorrow.getTime();
+        
+        // Get day of week
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        result.dayOfWeek = days[matchDate.getDay()];
+        
+        // Format date as DD/MM/YYYY
+        result.date = `${day}/${month}/${year}`;
+      }
+      
+      if (match.match_time) {
+        // Convert 24-hour to 12-hour format
+        const [hours, minutes] = match.match_time.split(':');
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = hour % 12 || 12;
+        result.time = `${hour12}:${minutes} ${ampm}`;
+      }
+      
+      return result;
+    };
+
+    const dateTimeInfo = formatDateTime();
+
     return (
       <Accordion>
         <AccordionItem
           title={
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr auto 2fr", gap: "1rem", alignItems: "center", flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", width: "100%", gap: "1rem" }}>
+              {/* Date and Time Column */}
+              <div style={{
+                minWidth: "140px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.125rem",
+                fontSize: "0.75rem",
+                color: "#525252"
+              }}>
+                {dateTimeInfo && dateTimeInfo.date && (
+                  <div style={{ fontWeight: dateTimeInfo.isToday || dateTimeInfo.isTomorrow ? "600" : "400" }}>
+                    {dateTimeInfo.isToday ? "Today" : dateTimeInfo.isTomorrow ? "Tomorrow" : `${dateTimeInfo.dayOfWeek}, ${dateTimeInfo.date}`}
+                  </div>
+                )}
+                {dateTimeInfo && dateTimeInfo.time && (
+                  <div>{dateTimeInfo.time}</div>
+                )}
+              </div>
+
+              {/* Team Names and Score */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "2fr auto 2fr",
+                gap: "1rem",
+                alignItems: "center",
+                flex: 1
+              }}>
                 <div style={{ textAlign: "right", fontWeight: team1Won ? "bold" : "normal" }}>
                   {formatTeamDisplay(match.team1, match.team1_subid)}
                 </div>
@@ -184,14 +290,16 @@ const Matches = () => {
                   {isPlayed ? (
                     <span style={scoreBoxStyle}>{team1Score}-{team2Score}</span>
                   ) : (
-                    <span style={{ fontSize: "0.875rem", color: "#525252" }}>VS</span>
+                    <span style={{ fontSize: "0.875rem", color: "#525252" }}>vs</span>
                   )}
                 </div>
                 <div style={{ textAlign: "left", fontWeight: team2Won ? "bold" : "normal" }}>
                   {formatTeamDisplay(match.team2, match.team2_subid)}
                 </div>
               </div>
-              <div style={{ minWidth: "100px", display: "flex", justifyContent: "flex-end" }}>
+              
+              {/* Update Button Column - Fixed width to maintain alignment */}
+              <div style={{ minWidth: "100px", width: "100px", display: "flex", justifyContent: "flex-end" }}>
                 {match.match_status === "scheduled" && (
                   <Button
                     kind="tertiary"
@@ -246,6 +354,8 @@ const Matches = () => {
               {!isPlayoff && <p><strong>Pool:</strong> {pool || "N/A"}</p>}
               {!isPlayoff && <p><strong>Round:</strong> {match.round || 1}</p>}
               <p><strong>Status:</strong> {match.match_status}</p>
+              {match.match_date && <p><strong>Date:</strong> {match.match_date}</p>}
+              {match.match_time && <p><strong>Time:</strong> {match.match_time}</p>}
             </div>
           </div>
         </AccordionItem>

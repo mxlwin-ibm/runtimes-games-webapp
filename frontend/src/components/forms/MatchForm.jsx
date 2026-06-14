@@ -6,6 +6,11 @@ import {
   NumberInput,
   InlineNotification,
   TextInput,
+  DatePicker,
+  DatePickerInput,
+  TimePicker,
+  TimePickerSelect,
+  SelectItem as TimeSelectItem,
 } from "@carbon/react";
 import { createMatch, getSubteams } from "../../services/api";
 
@@ -20,6 +25,8 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
     round: 1,
     event: event.toLowerCase(),
     match_type: mode === "Playoffs" ? "quarter_final" : "league",
+    match_date: "",
+    match_time: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -37,6 +44,8 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         team1_subid: "",
         team2: "",
         team2_subid: "",
+        match_date: "",
+        match_time: "",
       }));
     }
   }, [open, event, mode]);
@@ -96,6 +105,28 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
     });
   };
 
+  const handleDateChange = (dates) => {
+    if (dates && dates.length > 0) {
+      const date = dates[0];
+      // Format date as YYYY-MM-DD
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const formattedDate = `${year}-${month}-${day}`;
+      setFormData({
+        ...formData,
+        match_date: formattedDate,
+      });
+    }
+  };
+
+  const handleTimeChange = (e) => {
+    setFormData({
+      ...formData,
+      match_time: e.target.value,
+    });
+  };
+
   const handleSubmit = async () => {
     if (formData.team1 === formData.team2 && formData.team1_subid === formData.team2_subid) {
       setError("Subteams cannot be the same");
@@ -114,6 +145,8 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         round: formData.round,
         event: formData.event,
         match_type: formData.match_type,
+        match_date: formData.match_date,
+        match_time: formData.match_time,
       };
 
       await createMatch(matchData);
@@ -127,6 +160,8 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         round: 1,
         event: event.toLowerCase(),
         match_type: mode === "Playoffs" ? "quarter_final" : "league",
+        match_date: "",
+        match_time: "",
       });
       onSuccess();
       onClose();
@@ -138,9 +173,10 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
   };
 
   // For league matches, pool is required. For playoffs, it's not.
+  // Date and time are now required for all matches
   const isValid = mode === "League"
-    ? formData.pool && formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid && formData.round > 0
-    : formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid && formData.round > 0;
+    ? formData.pool && formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid && formData.round > 0 && formData.match_date && formData.match_time
+    : formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid && formData.round > 0 && formData.match_date && formData.match_time;
   
   // Filter subteams based on selected pool (only for league matches)
   const filteredSubteams = mode === "League" && formData.pool
@@ -250,8 +286,34 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
           min={1}
           value={formData.round}
           onChange={handleNumberChange}
+          style={{ marginBottom: "1rem" }}
         />
       )}
+
+      <DatePicker
+        datePickerType="single"
+        onChange={handleDateChange}
+        dateFormat="Y-m-d"
+        style={{ marginBottom: "1rem" }}
+      >
+        <DatePickerInput
+          id="match_date"
+          placeholder="yyyy-mm-dd"
+          labelText="Match Date *"
+          required
+        />
+      </DatePicker>
+
+      <TextInput
+        id="match_time"
+        labelText="Match Time *"
+        placeholder="HH:MM (24-hour format)"
+        value={formData.match_time}
+        onChange={handleTimeChange}
+        pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
+        invalidText="Please enter time in HH:MM format (e.g., 14:30)"
+        required
+      />
     </Modal>
   );
 };

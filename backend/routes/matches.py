@@ -21,7 +21,9 @@ def match_helper(match) -> dict:
         "match_status": match.get("match_status", "scheduled"),
         "round": int(match.get("round", 1)),
         "match_type": match.get("match_type", "league"),
-        "playoff_position": match.get("playoff_position")
+        "playoff_position": match.get("playoff_position"),
+        "match_date": match.get("match_date"),
+        "match_time": match.get("match_time")
     }
 
 
@@ -80,8 +82,9 @@ def create_match(match: MatchCreate):
                 detail=f"SubTeams must be in the same pool. {match.team1}-{match.team1_subid} is in Pool {team1_doc['pool']}, {match.team2}-{match.team2_subid} is in Pool {team2_doc['pool']}"
             )
     
-    # Check for duplicate matches (both directions)
+    # Check for duplicate matches (both directions) - include event in the check
     existing_match = db.matches.find_one({
+        "event": match.event,
         "$or": [
             {
                 "team1": match.team1,
@@ -101,7 +104,7 @@ def create_match(match: MatchCreate):
     if match.match_type == "league" and existing_match:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"A match between subteams {match.team1}-{match.team1_subid} and {match.team2}-{match.team2_subid} already exists"
+            detail=f"A match between subteams {match.team1}-{match.team1_subid} and {match.team2}-{match.team2_subid} already exists for event '{match.event}'"
         )
     
     # Create match document with separated team/subteam fields
@@ -115,7 +118,9 @@ def create_match(match: MatchCreate):
         "team2_score": 0,
         "match_status": MatchStatus.SCHEDULED.value,
         "round": match.round,
-        "match_type": match.match_type.value
+        "match_type": match.match_type.value,
+        "match_date": match.match_date,
+        "match_time": match.match_time
     }
     
     result = db.matches.insert_one(match_dict)
@@ -188,7 +193,7 @@ def update_match(id: str, match_update: MatchUpdate):
     team1_score = int(match_update.team1_score)
     team2_score = int(match_update.team2_score)
     
-    # Update match with scores and status
+    # Update match with scores and status (preserve existing date/time)
     update_data = {
         "team1_score": team1_score,
         "team2_score": team2_score,
