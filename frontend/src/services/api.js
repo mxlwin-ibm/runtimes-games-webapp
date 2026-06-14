@@ -40,7 +40,12 @@ export const updateMatch = (matchId, matchData) => api.put(`/matches/${matchId}`
 export const getTeamMatches = (teamId) => api.get(`/matches/team/${teamId}`);
 
 // Points Table API
-export const getPointsTable = () => api.get("/points-table/");
+export const getPointsTable = (params) => {
+  const queryParams = new URLSearchParams();
+  if (params?.event) queryParams.append("event", params.event);
+  const queryString = queryParams.toString();
+  return api.get(`/points-table/${queryString ? `?${queryString}` : ""}`);
+};
 
 export default api;
 
