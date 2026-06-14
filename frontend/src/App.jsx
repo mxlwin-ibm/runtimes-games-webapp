@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import AppHeader from "./components/layout/AppHeader";
 import Dashboard from "./pages/Dashboard";
-import Teams from "./pages/Teams";
+import Squad from "./pages/Squad";
 import Matches from "./pages/Matches";
 import PointTable from "./pages/PointTable";
 
@@ -13,9 +13,9 @@ function App() {
         <div className="content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/teams" element={<Teams />} />
+            <Route path="/squads" element={<Squad />} />
             <Route path="/matches" element={<Matches />} />
-            <Route path="/point-table" element={<PointTable />} />
+            <Route path="/points-table" element={<PointTable />} />
           </Routes>
         </div>
       </div>

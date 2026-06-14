@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   DataTable,
   TableContainer,
@@ -20,6 +20,7 @@ import { getTeams } from "../services/api";
 import TeamForm from "../components/forms/TeamForm";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
+import { useAuth } from "../contexts/AuthContext";
 
 const headers = [
   { key: "team_id", header: "Team ID" },
@@ -29,19 +30,18 @@ const headers = [
 ];
 
 const Teams = () => {
+  const { isAdmin } = useAuth();
   const [teams, setTeams] = useState([]);
-  const [filteredTeams, setFilteredTeams] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
   const fetchTeams = useCallback(async (isMounted = () => true) => {
-    setLoading(true);
-
     try {
-      const response = await getTeams();
+      setLoading(true);
 
-      console.log("Raw API response:", response?.data);
+      const response = await getTeams();
 
       const teamsData = Array.isArray(response?.data)
         ? response.data
@@ -52,33 +52,28 @@ const Teams = () => {
         id:
           team?._id ||
           team?.team_id ||
-          `team-${index}-${Date.now()}`,
+          `team-${index}`,
       }));
 
-      // O(n) deduplication by _id
       const uniqueTeams = [
         ...new Map(
           transformedTeams.map((team) => [
-            team._id || team.id,
+            team?._id ||
+              team?.team_id ||
+              team?.id,
             team,
           ])
         ).values(),
-      ];
-
-      uniqueTeams.sort((a, b) =>
-        String(a?.club ?? "").localeCompare(String(b?.club ?? ""))
+      ].sort((a, b) =>
+        String(a?.club ?? "").localeCompare(
+          String(b?.club ?? "")
+        )
       );
-
-      console.log("Teams received:", teamsData.length);
-      console.log("Unique teams:", uniqueTeams.length);
 
       if (!isMounted()) return;
 
       setTeams(uniqueTeams);
-      setFilteredTeams(uniqueTeams);
     } catch (err) {
-      console.error("Failed to fetch teams:", err);
-
       if (!isMounted()) return;
 
       setToast({
@@ -103,38 +98,39 @@ const Teams = () => {
     };
   }, [fetchTeams]);
 
-  const handleSearch = (event) => {
-    const searchTerm = String(
-      event?.target?.value ?? ""
-    )
-      .toLowerCase()
-      .trim();
+  const filteredTeams = useMemo(() => {
+    if (!searchTerm) return teams;
 
-    if (!searchTerm) {
-      setFilteredTeams(teams);
-      return;
-    }
+    return teams.filter((team) => {
+      const teamId = String(
+        team?.team_id ?? ""
+      ).toLowerCase();
 
-    const filtered = teams
-      .filter((team) => {
-        const teamId = String(team?.team_id ?? "").toLowerCase();
-        const teamName = String(team?.team_name ?? "").toLowerCase();
-        const club = String(team?.club ?? "").toLowerCase();
+      const teamName = String(
+        team?.team_name ?? ""
+      ).toLowerCase();
 
-        return (
-          teamId.includes(searchTerm) ||
-          teamName.includes(searchTerm) ||
-          club.includes(searchTerm)
-        );
-      })
-      .sort((a, b) =>
-        String(a?.club ?? "").localeCompare(String(b?.club ?? ""))
+      const club = String(
+        team?.club ?? ""
+      ).toLowerCase();
+
+      return (
+        teamId.includes(searchTerm) ||
+        teamName.includes(searchTerm) ||
+        club.includes(searchTerm)
       );
+    });
+  }, [teams, searchTerm]);
 
-    setFilteredTeams(filtered);
-  };
+  const handleSearch = useCallback((event) => {
+    setSearchTerm(
+      String(event?.target?.value ?? "")
+        .toLowerCase()
+        .trim()
+    );
+  }, []);
 
-  const handleCreateSuccess = async () => {
+  const handleCreateSuccess = useCallback(async () => {
     setModalOpen(false);
 
     setToast({
@@ -144,16 +140,17 @@ const Teams = () => {
     });
 
     await fetchTeams();
-  };
+  }, [fetchTeams]);
 
   if (loading) {
     return <LoadingState />;
   }
 
   return (
-    <div style={{ padding: "2rem" }}>
+    <div style={{ padding: "1rem 2rem" }}>
       {toast && (
         <ToastNotification
+          lowContrast
           kind={toast.kind}
           title={toast.title}
           subtitle={toast.subtitle}
@@ -178,12 +175,14 @@ const Teams = () => {
       >
         <h1 style={{ margin: 0 }}>Teams</h1>
 
-        <Button
-          renderIcon={Add}
-          onClick={() => setModalOpen(true)}
-        >
-          Add Team
-        </Button>
+        {isAdmin && (
+          <Button
+            renderIcon={Add}
+            onClick={() => setModalOpen(true)}
+          >
+            Add Team
+          </Button>
+        )}
       </div>
 
       {teams.length === 0 ? (
@@ -204,11 +203,12 @@ const Teams = () => {
             getHeaderProps,
             getRowProps,
           }) => (
-            <TableContainer>
+            <TableContainer title="Teams">
               <TableToolbar>
                 <TableToolbarContent>
                   <TableToolbarSearch
                     persistent
+                    placeholder="Search teams..."
                     onChange={handleSearch}
                   />
                 </TableToolbarContent>
@@ -245,7 +245,7 @@ const Teams = () => {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={headers.length}>
-                        No matching teams found
+                        No teams match your search criteria.
                       </TableCell>
                     </TableRow>
                   )}

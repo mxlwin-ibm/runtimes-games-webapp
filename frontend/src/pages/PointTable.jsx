@@ -12,6 +12,13 @@ import {
   TableToolbarContent,
   Button,
   ToastNotification,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+  Select,
+  SelectItem,
 } from "@carbon/react";
 import { Renew } from "@carbon/icons-react";
 
@@ -19,20 +26,51 @@ import { getPointsTable } from "../services/api";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
 
-const headers = [
+const EVENTS = [
+  "Foosball",
+  "Cricket",
+  "Badminton",
+  "Snooker",
+  "Chess",
+  "Carroms",
+  "Table Tennis",
+  "Football",
+];
+
+const POOLS = ["All Pools", "Pool A", "Pool B", "Pool C", "Pool D"];
+
+// Events that use goal-based scoring (GF/GA/GD)
+const GOAL_BASED_EVENTS = ["Foosball", "Football"];
+
+// Base headers for all events
+const baseHeaders = [
   { key: "rank", header: "Rank" },
-  { key: "team_id", header: "Team ID" },
+  { key: "team_id", header: "Players" },
   { key: "team_name", header: "Team Name" },
   { key: "played", header: "Played" },
   { key: "won", header: "Won" },
   { key: "lost", header: "Lost" },
+];
+
+// Goal-based headers (only for Foosball and Football)
+const goalHeaders = [
   { key: "gf", header: "GF" },
   { key: "ga", header: "GA" },
   { key: "gd", header: "GD" },
-  { key: "points", header: "Points" },
 ];
 
-const PoolTable = ({ title, standings }) => {
+// Points header (always shown)
+const pointsHeader = { key: "points", header: "Points" };
+
+// Function to get headers based on event type
+const getHeadersForEvent = (event) => {
+  const isGoalBased = GOAL_BASED_EVENTS.includes(event);
+  return isGoalBased
+    ? [...baseHeaders, ...goalHeaders, pointsHeader]
+    : [...baseHeaders, pointsHeader];
+};
+
+const PoolTable = ({ title, standings, headers }) => {
   const standingsMap = useMemo(
     () => new Map(standings.map((team) => [team.id, team])),
     [standings]
@@ -113,32 +151,15 @@ const PoolTable = ({ title, standings }) => {
 };
 
 const PointTable = () => {
-  const [poolAStandings, setPoolAStandings] = useState([]);
-  const [poolBStandings, setPoolBStandings] = useState([]);
+  const [allStandings, setAllStandings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState("Foosball");
+  const [selectedPool, setSelectedPool] = useState("All Pools");
 
-  const sortAndRankTeams = (teams, poolPrefix) => {
-    return [...teams]
-      .sort((a, b) => {
-        const pointsDiff = (b?.points || 0) - (a?.points || 0);
-
-        if (pointsDiff !== 0) {
-          return pointsDiff;
-        }
-
-        return (b?.gd || 0) - (a?.gd || 0);
-      })
-      .map((team, index) => ({
-        ...team,
-        rank: index + 1,
-        id:
-          team?.team_id ||
-          team?._id ||
-          `${poolPrefix}-${index}`,
-      }));
-  };
+  // Get headers based on selected event
+  const headers = useMemo(() => getHeadersForEvent(selectedEvent), [selectedEvent]);
 
   const fetchPointsTable = useCallback(
     async (isMounted = () => true, showLoader = true) => {
@@ -149,34 +170,16 @@ const PointTable = () => {
           setRefreshing(true);
         }
 
-        const response = await getPointsTable();
+        const response = await getPointsTable({ event: selectedEvent.toLowerCase() });
 
         const data = Array.isArray(response?.data)
           ? response.data
           : [];
 
-        const poolATeams = data.filter(
-          (team) =>
-            String(team?.pool ?? "").toUpperCase() === "A"
-        );
-
-        const poolBTeams = data.filter(
-          (team) =>
-            String(team?.pool ?? "").toUpperCase() === "B"
-        );
-
         if (!isMounted()) return;
 
-        setPoolAStandings(
-          sortAndRankTeams(poolATeams, "poolA")
-        );
-
-        setPoolBStandings(
-          sortAndRankTeams(poolBTeams, "poolB")
-        );
+        setAllStandings(data);
       } catch (err) {
-        console.error("Failed to load points table:", err);
-
         if (!isMounted()) return;
 
         setToast({
@@ -191,8 +194,69 @@ const PointTable = () => {
         setRefreshing(false);
       }
     },
-    []
+    [selectedEvent]
   );
+
+  // Filter and group standings by pool
+  const { poolAStandings, poolBStandings, poolCStandings, poolDStandings } = useMemo(() => {
+    const sortAndRankTeams = (teams, poolPrefix) => {
+      return [...teams]
+        .sort((a, b) => {
+          const pointsDiff = (b?.points || 0) - (a?.points || 0);
+          if (pointsDiff !== 0) {
+            return pointsDiff;
+          }
+          return (b?.gd || 0) - (a?.gd || 0);
+        })
+        .map((team, index) => ({
+          ...team,
+          rank: index + 1,
+          id: team?.team_id || team?._id || `${poolPrefix}-${index}`,
+        }));
+    };
+
+    const poolATeams = allStandings.filter(
+      (team) => String(team?.pool ?? "").toUpperCase() === "A"
+    );
+    const poolBTeams = allStandings.filter(
+      (team) => String(team?.pool ?? "").toUpperCase() === "B"
+    );
+    const poolCTeams = allStandings.filter(
+      (team) => String(team?.pool ?? "").toUpperCase() === "C"
+    );
+    const poolDTeams = allStandings.filter(
+      (team) => String(team?.pool ?? "").toUpperCase() === "D"
+    );
+
+    return {
+      poolAStandings: sortAndRankTeams(poolATeams, "poolA"),
+      poolBStandings: sortAndRankTeams(poolBTeams, "poolB"),
+      poolCStandings: sortAndRankTeams(poolCTeams, "poolC"),
+      poolDStandings: sortAndRankTeams(poolDTeams, "poolD"),
+    };
+  }, [allStandings]);
+
+  // Filter pools based on selected pool
+  const displayPools = useMemo(() => {
+    if (selectedPool === "All Pools") {
+      return [
+        { title: "Pool A", standings: poolAStandings },
+        { title: "Pool B", standings: poolBStandings },
+        { title: "Pool C", standings: poolCStandings },
+        { title: "Pool D", standings: poolDStandings },
+      ].filter(pool => pool.standings.length > 0);
+    }
+
+    const poolLetter = selectedPool.split(" ")[1]; // Extract "A", "B", etc.
+    const poolMap = {
+      A: { title: "Pool A", standings: poolAStandings },
+      B: { title: "Pool B", standings: poolBStandings },
+      C: { title: "Pool C", standings: poolCStandings },
+      D: { title: "Pool D", standings: poolDStandings },
+    };
+
+    return poolMap[poolLetter] ? [poolMap[poolLetter]] : [];
+  }, [selectedPool, poolAStandings, poolBStandings, poolCStandings, poolDStandings]);
 
   useEffect(() => {
     let mounted = true;
@@ -256,23 +320,57 @@ const PointTable = () => {
         </Button>
       </div>
 
-      {poolAStandings.length === 0 &&
-      poolBStandings.length === 0 ? (
+      {/* Event Filter Tabs */}
+      <div style={{ marginBottom: "1rem" }}>
+        <Tabs
+          selectedIndex={EVENTS.indexOf(selectedEvent)}
+          onChange={(evt) => {
+            const index = evt.selectedIndex;
+            setSelectedEvent(EVENTS[index]);
+          }}
+        >
+          <TabList contained aria-label="Event filter tabs">
+            {EVENTS.map((event) => (
+              <Tab key={event}>{event}</Tab>
+            ))}
+          </TabList>
+          <TabPanels>
+            {EVENTS.map((event) => (
+              <TabPanel key={event}></TabPanel>
+            ))}
+          </TabPanels>
+        </Tabs>
+      </div>
+
+      {/* Pool Filter */}
+      <div style={{ marginBottom: "1.5rem", maxWidth: "300px" }}>
+        <Select
+          id="pool-filter"
+          labelText="Filter by Pool"
+          value={selectedPool}
+          onChange={(e) => setSelectedPool(e.target.value)}
+        >
+          {POOLS.map((pool) => (
+            <SelectItem key={pool} value={pool} text={pool} />
+          ))}
+        </Select>
+      </div>
+
+      {displayPools.length === 0 ? (
         <EmptyState
           title="No standings yet"
           description="Points table will appear once matches are played"
         />
       ) : (
         <>
-          <PoolTable
-            title="Pool A"
-            standings={poolAStandings}
-          />
-
-          <PoolTable
-            title="Pool B"
-            standings={poolBStandings}
-          />
+          {displayPools.map((pool) => (
+            <PoolTable
+              key={pool.title}
+              title={pool.title}
+              standings={pool.standings}
+              headers={headers}
+            />
+          ))}
         </>
       )}
     </div>

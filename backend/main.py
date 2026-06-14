@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from backend.database import connect_to_mongo, close_mongo_connection, get_database
-from backend.routes import teams, matches, points_table
+from backend.routes import matches, points_table, players, subteams, auth, events
 import os
 from dotenv import load_dotenv
 
@@ -18,8 +18,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Foosball League API",
-    description="API for managing foosball tournament teams and matches",
+    title="Runtimes Games API",
+    description="API for managing tournaments, teams and matches",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -34,9 +34,12 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(teams.router)
+app.include_router(auth.router)
 app.include_router(matches.router)
 app.include_router(points_table.router)
+app.include_router(players.router)
+app.include_router(subteams.router)
+app.include_router(events.router)
 
 
 @app.get("/")
@@ -48,7 +51,7 @@ def health():
 def test_insert_team():
     """Test endpoint to verify MongoDB connection"""
     db = get_database()
-    result = db.teams.insert_one({"name": "Alpha"})
+    result = db.subteams.insert_one({"name": "Alpha"})
     return {
         "message": "Team inserted successfully",
         "id": str(result.inserted_id)

@@ -1,10 +1,14 @@
 from backend.database import get_database
-from typing import List, Dict, Any
+from bson import ObjectId
+from typing import List, Dict, Any, Optional
 
 
-def calculate_points_table() -> List[Dict[str, Any]]:
+def calculate_points_table(event: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Get points table from teams database.
+    Get points table from subteams database.
+    
+    Args:
+        event: Optional event name to filter by
     
     Returns sorted list by:
     1. Points (descending)
@@ -13,23 +17,46 @@ def calculate_points_table() -> List[Dict[str, Any]]:
     """
     db = get_database()
     
-    # Get all teams
-    teams = list(db.teams.find())
+    # Build query filter
+    query = {}
+    if event:
+        query["event"] = event
+    
+    # Get subteams with optional event filter
+    subteams = list(db.subteams.find(query))
     
     # Format response
     table_entries = []
-    for team in teams:
+    for subteam in subteams:
+        # Generate team name from team and subteam_id
+        team_name = f"{subteam.get('team', 'Unknown')}-{subteam.get('subteam_id', 0)}"
+        
+        # Fetch player names
+        player_names = []
+        for player_id in subteam.get("player_ids", []):
+            try:
+                player = db.players.find_one({"_id": ObjectId(player_id)})
+                if player:
+                    player_names.append(player.get("player_name", "Unknown"))
+                else:
+                    player_names.append("Unknown")
+            except:
+                player_names.append("Unknown")
+        
+        # Join player names with comma
+        players_display = ", ".join(player_names) if player_names else "No players"
+        
         entry = {
-            "team_id": team["team_id"],
-            "team_name": team["team_name"],
-            "pool": team.get("pool", "A"),  # Include pool field for frontend filtering
-            "played": team.get("win", 0) + team.get("loss", 0),
-            "won": team.get("win", 0),
-            "lost": team.get("loss", 0),
-            "gf": team.get("gf", 0),
-            "ga": team.get("ga", 0),
-            "gd": team.get("gd", "+0"),
-            "points": team.get("points", 0)
+            "team_id": players_display,  # Display player names instead of ID
+            "team_name": team_name,
+            "pool": subteam.get("pool", "A"),  # Include pool field for frontend filtering
+            "played": subteam.get("played", 0),
+            "won": subteam.get("win", 0),
+            "lost": subteam.get("loss", 0),
+            "gf": subteam.get("gf", 0),
+            "ga": subteam.get("ga", 0),
+            "gd": subteam.get("gd", 0),
+            "points": subteam.get("points", 0)
         }
         table_entries.append(entry)
     
@@ -37,7 +64,7 @@ def calculate_points_table() -> List[Dict[str, Any]]:
     table_entries.sort(
         key=lambda x: (
             -x["points"],
-            -int(x["gd"]),  # Parse gd string to int for sorting
+            -x["gd"],  # gd is already an integer
             -x["gf"]
         )
     )

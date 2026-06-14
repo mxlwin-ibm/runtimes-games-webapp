@@ -1,12 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from backend.services.points_table import calculate_points_table
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 router = APIRouter(prefix="/points-table", tags=["points-table"])
 
 
 @router.get("/", response_model=List[Dict[str, Any]])
-def get_points_table():
+def get_points_table(event: Optional[str] = Query(None, description="Filter by event name")):
     """
     Get the current points table/standings.
     
@@ -21,6 +21,6 @@ def get_points_table():
     - Win = 3 points
     - Loss = 0 points
     """
-    return calculate_points_table()
+    return calculate_points_table(event)
 
 
