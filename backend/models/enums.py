@@ -13,6 +13,13 @@ class MatchStatus(str, Enum):
     """Match status enum"""
     SCHEDULED = "scheduled"
     PLAYED = "played"
-    CANCELLED = "cancelled"
+
+
+class MatchType(str, Enum):
+    """Match type enum for league vs playoffs"""
+    LEAGUE = "league"
+    QUARTER_FINAL = "quarter_final"
+    SEMI_FINAL = "semi_final"
+    FINAL = "final"
 
 

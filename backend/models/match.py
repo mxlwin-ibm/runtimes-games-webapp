@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional
-from backend.models.enums import MatchStatus
+from backend.models.enums import MatchStatus, MatchType
 
 
 class MatchCreate(BaseModel):
@@ -10,6 +10,8 @@ class MatchCreate(BaseModel):
     team2: str = Field(..., description="Second team name (e.g., 'Vikings')")
     team2_subid: str = Field(..., description="Second subteam identifier (e.g., '2')")
     event: str = Field(default="foosball", description="Event name")
+    round: int = Field(default=1, ge=1, description="Round number")
+    match_type: MatchType = Field(default=MatchType.LEAGUE, description="Match type: league or playoff stage")
     
     @field_validator('team2', 'team1_subid', 'team2_subid')
     @classmethod
@@ -45,7 +47,10 @@ class Match(BaseModel):
                 "team2_subid": "2",
                 "team1_score": 10,
                 "team2_score": 8,
-                "match_status": "played"
+                "match_status": "played",
+                "round": 1,
+                "match_type": "league",
+                "playoff_position": None
             }
         },
         populate_by_name=True
@@ -60,6 +65,9 @@ class Match(BaseModel):
     team1_score: int = Field(default=0, ge=0, description="Score for team 1")
     team2_score: int = Field(default=0, ge=0, description="Score for team 2")
     match_status: MatchStatus = Field(default=MatchStatus.SCHEDULED, description="Match status")
+    round: int = Field(default=1, ge=1, description="Round number")
+    match_type: MatchType = Field(default=MatchType.LEAGUE, description="Match type: league or playoff stage")
+    playoff_position: Optional[str] = Field(None, description="Playoff position (e.g., 'QF1', 'SF1', 'F1')")
     
     @field_validator('team2', 'team1_subid', 'team2_subid')
     @classmethod

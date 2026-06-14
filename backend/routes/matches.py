@@ -18,7 +18,10 @@ def match_helper(match) -> dict:
         "team2_subid": str(match.get("team2_subid")),
         "team1_score": int(match.get("team1_score", 0)),
         "team2_score": int(match.get("team2_score", 0)),
-        "match_status": match.get("match_status", "scheduled")
+        "match_status": match.get("match_status", "scheduled"),
+        "round": int(match.get("round", 1)),
+        "match_type": match.get("match_type", "league"),
+        "playoff_position": match.get("playoff_position")
     }
 
 
@@ -43,36 +46,39 @@ def create_match(match: MatchCreate):
             detail="team1_subid and team2_subid must be valid integers"
         )
     
-    # Verify both subteams exist and get their details
-    team1_doc = db.subteams.find_one({
-        "event": match.event,
-        "team": match.team1,
-        "subteam_id": team1_subid
-    })
-    team2_doc = db.subteams.find_one({
-        "event": match.event,
-        "team": match.team2,
-        "subteam_id": team2_subid
-    })
-    
-    if not team1_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"SubTeam '{match.team1}-{match.team1_subid}' not found for event '{match.event}'"
-        )
-    
-    if not team2_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"SubTeam '{match.team2}-{match.team2_subid}' not found for event '{match.event}'"
-        )
-    
-    # Verify both subteams are in the same pool
-    if team1_doc["pool"] != team2_doc["pool"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"SubTeams must be in the same pool. {match.team1}-{match.team1_subid} is in Pool {team1_doc['pool']}, {match.team2}-{match.team2_subid} is in Pool {team2_doc['pool']}"
-        )
+    # For league matches, verify subteams exist and are in same pool
+    # For playoff matches, skip pool validation
+    if match.match_type.value == "league":
+        # Verify both subteams exist and get their details
+        team1_doc = db.subteams.find_one({
+            "event": match.event,
+            "team": match.team1,
+            "subteam_id": team1_subid
+        })
+        team2_doc = db.subteams.find_one({
+            "event": match.event,
+            "team": match.team2,
+            "subteam_id": team2_subid
+        })
+        
+        if not team1_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"SubTeam '{match.team1}-{match.team1_subid}' not found for event '{match.event}'"
+            )
+        
+        if not team2_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"SubTeam '{match.team2}-{match.team2_subid}' not found for event '{match.event}'"
+            )
+        
+        # Verify both subteams are in the same pool
+        if team1_doc["pool"] != team2_doc["pool"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"SubTeams must be in the same pool. {match.team1}-{match.team1_subid} is in Pool {team1_doc['pool']}, {match.team2}-{match.team2_subid} is in Pool {team2_doc['pool']}"
+            )
     
     # Check for duplicate matches (both directions)
     existing_match = db.matches.find_one({
@@ -81,7 +87,7 @@ def create_match(match: MatchCreate):
                 "team1": match.team1,
                 "team1_subid": match.team1_subid,
                 "team2": match.team2,
-                "team2_subid": match.team2_subid
+                "team2_subid": match.team2_subid,
             },
             {
                 "team1": match.team2,
@@ -92,7 +98,7 @@ def create_match(match: MatchCreate):
         ]
     })
     
-    if existing_match:
+    if match.match_type == "league" and existing_match:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A match between subteams {match.team1}-{match.team1_subid} and {match.team2}-{match.team2_subid} already exists"
@@ -107,7 +113,9 @@ def create_match(match: MatchCreate):
         "team2_subid": match.team2_subid,
         "team1_score": 0,
         "team2_score": 0,
-        "match_status": MatchStatus.SCHEDULED.value
+        "match_status": MatchStatus.SCHEDULED.value,
+        "round": match.round,
+        "match_type": match.match_type.value
     }
     
     result = db.matches.insert_one(match_dict)

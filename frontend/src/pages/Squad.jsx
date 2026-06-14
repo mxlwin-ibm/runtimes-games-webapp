@@ -67,7 +67,7 @@ const Squad = () => {
       // Build query parameters for backend filtering
       const params = {};
       if (filters.event && filters.event !== "All") {
-        params.event = filters.event;
+        params.event = filters.event.toLowerCase();
       }
       // Always include team filter since there's no "All" option
       if (filters.team) {
@@ -153,7 +153,7 @@ const Squad = () => {
     } else {
       // When a specific sport is selected, fetch squads
       const filters = {
-        event: selectedSport,
+        event: selectedSport.toLowerCase(),
         team: selectedTeam,
       };
       fetchSquads(() => mounted, filters);
@@ -210,7 +210,7 @@ const Squad = () => {
       subtitle: "Squad created successfully",
     });
     await fetchSquads(() => true, {
-      event: selectedSport !== "All" ? selectedSport : null,
+      event: selectedSport !== "All" ? selectedSport.toLowerCase() : null,
       team: selectedTeam, // Always pass team since there's no "All" option
     });
   }, [fetchSquads, selectedSport, selectedTeam]);

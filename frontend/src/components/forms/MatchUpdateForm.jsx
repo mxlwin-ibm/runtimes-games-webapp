@@ -10,9 +10,9 @@ import { updateMatch } from "../../services/api";
 
 const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
   const [formData, setFormData] = useState({
-    score_a: 0,
-    score_b: 0,
-    status: "played",
+    team1_score: 0,
+    team2_score: 0,
+    match_status: "played",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -27,7 +27,7 @@ const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
   const handleSelectChange = (e) => {
     setFormData({
       ...formData,
-      status: e.target.value,
+      match_status: e.target.value,
     });
   };
 
@@ -36,8 +36,8 @@ const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
     setLoading(true);
 
     try {
-      await updateMatch(match.match_id, formData);
-      setFormData({ score_a: 0, score_b: 0, status: "played" });
+      await updateMatch(match._id, formData);
+      setFormData({ team1_score: 0, team2_score: 0, match_status: "played" });
       onSuccess();
       onClose();
     } catch (err) {
@@ -54,7 +54,7 @@ const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
       open={open}
       onRequestClose={onClose}
       onRequestSubmit={handleSubmit}
-      modalHeading={`Update Match Result: ${match.team_a_id} vs ${match.team_b_id}`}
+      modalHeading={`Update Match Result: ${match.team1}-${match.team1_subid} vs ${match.team2}-${match.team2_subid}`}
       primaryButtonText="Update Result"
       secondaryButtonText="Cancel"
       primaryButtonDisabled={loading}
@@ -70,25 +70,25 @@ const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
         />
       )}
       <NumberInput
-        id="score_a"
-        label={`${match.team_a_id} Score`}
+        id="team1_score"
+        label={`${match.team1}-${match.team1_subid} Score`}
         min={0}
-        value={formData.score_a}
-        onChange={handleNumberChange("score_a")}
+        value={formData.team1_score}
+        onChange={handleNumberChange("team1_score")}
         style={{ marginBottom: "1rem" }}
       />
       <NumberInput
-        id="score_b"
-        label={`${match.team_b_id} Score`}
+        id="team2_score"
+        label={`${match.team2}-${match.team2_subid} Score`}
         min={0}
-        value={formData.score_b}
-        onChange={handleNumberChange("score_b")}
+        value={formData.team2_score}
+        onChange={handleNumberChange("team2_score")}
         style={{ marginBottom: "1rem" }}
       />
       <Select
-        id="status"
+        id="match_status"
         labelText="Status"
-        value={formData.status}
+        value={formData.match_status}
         onChange={handleSelectChange}
       >
         <SelectItem value="played" text="Played" />

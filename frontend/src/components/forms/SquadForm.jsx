@@ -144,7 +144,10 @@ const SquadForm = ({ open, onClose, onSuccess }) => {
     setLoading(true);
 
     try {
-      await createSubteam(formData);
+      await createSubteam({
+        ...formData,
+        event: formData.event.toLowerCase()
+      });
       setFormData({
         event: "",
         team: "",
