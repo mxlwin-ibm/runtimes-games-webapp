@@ -173,8 +173,10 @@ const Dashboard = () => {
   };
 
   // Calculate tournament stats from real data
+  // Count unique teams from subteams (event-specific)
+  const uniqueTeams = [...new Set(subteams.map(st => st.team))];
   const tournamentStats = {
-    teams: teams.length,
+    teams: uniqueTeams.length,
     matches: matches.length,
     round: matches.length > 0 ? Math.max(...matches.map(m => m.round || 1)) : 1,
     completed: matches.filter(m => m.match_status === 'played').length,
