@@ -5,7 +5,7 @@ Production-ready Model Context Protocol (MCP) server for the Foosball League Fas
 ## Features
 
 - Async MCP tools backed by `httpx.AsyncClient`
-- Domain-organized tools for teams, matches, and standings
+- Domain-organized tools for matches, players, subteams, and standings
 - Read-only MCP resources for standings, teams, recent matches, and upcoming matches
 - Reusable prompts for league analysis workflows
 - Environment-driven configuration
@@ -21,8 +21,9 @@ mcp/
 ├── README.md
 ├── tools/
 │   ├── __init__.py
-│   ├── teams.py
 │   ├── matches.py
+│   ├── players.py
+│   ├── subteams.py
 │   └── points_table.py
 ├── resources/
 │   └── __init__.py
@@ -80,18 +81,28 @@ uv run python -m mcp.server
 
 ## Available Tools
 
-### Teams
-
-- `create_team(name: str, pool: str)`
-- `list_teams()`
-- `delete_team(team_id: str)`
-
 ### Matches
 
 - `schedule_match(team1_id: str, team2_id: str, scheduled_date: str)`
 - `update_match_result(match_id: str, team1_score: int, team2_score: int)`
 - `list_all_matches()`
 - `list_team_matches(team_id: str)`
+
+### Players
+
+- `create_player(player_name: str, team: str)`
+- `list_players(team: str | None = None)`
+- `get_player(player_id: str)`
+- `update_player(player_id: str, player_name: str, team: str)`
+- `delete_player(player_id: str)`
+
+### Subteams
+
+- `create_subteam(event: str, team: str, subteam_id: int, pool: str, player_ids: list[str])`
+- `list_subteams(event: str | None = None, team: str | None = None, pool: str | None = None)`
+- `get_subteam(subteam_id: str)`
+- `update_subteam(subteam_id: str, event: str, team: str, subteam_number: int, pool: str, player_ids: list[str])`
+- `delete_subteam(subteam_id: str)`
 
 ### Points Table
 
@@ -116,11 +127,13 @@ uv run python -m mcp.server
 
 ### Example MCP workflow
 
-1. Call `list_teams()` to inspect registered teams.
-2. Call `schedule_match("B1", "B2", "2026-06-15")` to create a match.
-3. Call `update_match_result("B1B2", 10, 8)` after the match is played.
-4. Call `get_points_table()` to inspect updated standings.
-5. Read `foosball://standings` for a formatted standings snapshot.
+1. Call `create_player("John Doe", "Titans")` to create players.
+2. Call `create_subteam("foosball", "Titans", 1, "A", [player_ids])` to create subteams.
+3. Call `list_subteams()` to inspect registered subteams.
+4. Call `schedule_match("subteam1_id", "subteam2_id", "2026-06-15")` to create a match.
+5. Call `update_match_result("match_id", 10, 8)` after the match is played.
+6. Call `get_points_table()` to inspect updated standings.
+7. Read `foosball://standings` for a formatted standings snapshot.
 
 ### Example environment launch
 
@@ -208,9 +221,11 @@ Then connect with an MCP-compatible client and verify:
 
 ### Suggested validation scenarios
 
-- Create a team in Pool A and Pool B
-- Attempt duplicate team creation
-- Schedule a valid match
+- Create players for different teams (Titans, El Dragos, Gladiators, Vikings)
+- Attempt duplicate player creation
+- Create subteams with player assignments in different pools
+- Attempt to create subteam with more than 10 players
+- Schedule a valid match between subteams
 - Attempt cross-pool scheduling
 - Update a match result
 - Verify standings update correctly
@@ -246,10 +261,13 @@ Check:
 
 Ensure:
 
-- pool values are `A` or `B`
+- pool values are `A`, `B`, `C`, or `D`
+- team values are `Titans`, `El Dragos`, `Gladiators`, or `Vikings`
 - `scheduled_date` is valid ISO-8601
 - scores are non-negative integers
-- team and match identifiers exist in the backend
+- team, match, player, and subteam identifiers exist in the backend
+- player_ids are valid MongoDB ObjectIds
+- subteams have at most 10 players
 
 ## Notes
 
