@@ -26,14 +26,14 @@ const AppHeader = () => {
   };
 
   return (
-    <Header aria-label="Runtimes Games S01">
+    <Header aria-label="Runtimes Games">
       <HeaderMenuButton
         aria-label={isSideNavExpanded ? 'Close menu' : 'Open menu'}
         onClick={onClickSideNavExpand}
         isActive={isSideNavExpanded}
       />
       <HeaderName element={Link} to="/" prefix="">
-      Runtimes Games S01
+      Runtimes Games
       </HeaderName>
       <HeaderNavigation aria-label="Main Navigation">
         <HeaderMenuItem

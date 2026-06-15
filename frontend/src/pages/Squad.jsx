@@ -126,6 +126,9 @@ const Squad = () => {
       const transformedPlayers = playersData.map((player, index) => ({
         ...player,
         id: player?._id || `player-${index}`,
+        player_name: index === 0
+          ? `${player.player_name} (C)`
+          : player.player_name,
       }));
 
       if (!isMounted()) return;

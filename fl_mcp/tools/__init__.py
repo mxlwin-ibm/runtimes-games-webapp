@@ -1,5 +1,5 @@
 """MCP tools package for Foosball League."""
 
-__all__ = ["teams", "matches", "points_table"]
+__all__ = ["matches", "points_table", "players", "subteams"]
 
 # Made with Bob
