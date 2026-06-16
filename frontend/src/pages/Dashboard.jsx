@@ -181,10 +181,19 @@ const Dashboard = () => {
     completed: matches.filter(m => m.match_status === 'played').length,
   };
 
-  // Get next scheduled match
+  // Get next scheduled match - sort by date and time
   const nextMatch = matches
     .filter(m => m.match_status === 'scheduled')
-    .sort((a, b) => (a.round || 0) - (b.round || 0))[0];
+    .sort((a, b) => {
+      // If both have date and time, sort by datetime
+      if (a.match_date && a.match_time && b.match_date && b.match_time) {
+        const dateTimeA = new Date(`${a.match_date}T${a.match_time}`);
+        const dateTimeB = new Date(`${b.match_date}T${b.match_time}`);
+        return dateTimeA - dateTimeB;
+      }
+      // Fallback to round number if date/time not available
+      return (a.round || 0) - (b.round || 0);
+    })[0];
 
   // Get latest completed match
   const latestResult = matches
