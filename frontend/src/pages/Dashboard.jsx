@@ -205,10 +205,15 @@ const Dashboard = () => {
       return dateTimeB.localeCompare(dateTimeA); // Descending order (most recent first)
     })[0];
 
-  // Get recent results (last 3 completed matches)
+  // Get recent results (last 3 completed matches) - sorted by date+time chronologically
   const recentResults = matches
     .filter(m => m.match_status === 'played')
-    .sort((a, b) => (b.round || 0) - (a.round || 0))
+    .sort((a, b) => {
+      // Combine date and time for proper chronological sorting
+      const dateTimeA = `${a.match_date || '1970-01-01'} ${a.match_time || '00:00'}`;
+      const dateTimeB = `${b.match_date || '1970-01-01'} ${b.match_time || '00:00'}`;
+      return dateTimeB.localeCompare(dateTimeA); // Descending order (most recent first)
+    })
     .slice(0, 3);
 
   // Calculate MVP (team with most wins, then most goals across all pools)
