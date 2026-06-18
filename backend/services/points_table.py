@@ -1,6 +1,11 @@
 from backend.database import get_database
 from bson import ObjectId
 from typing import List, Dict, Any, Optional
+import logging
+import time
+
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_points_table(event: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -22,30 +27,42 @@ def calculate_points_table(event: Optional[str] = None) -> List[Dict[str, Any]]:
     if event:
         query["event"] = event
     
-    # Get subteams with optional event filter
+    endpoint_start = time.perf_counter()
+
+    subteams_query_start = time.perf_counter()
     subteams = list(db.subteams.find(query))
-    
+    subteams_query_ms = (time.perf_counter() - subteams_query_start) * 1000
+
+    player_lookup_start = time.perf_counter()
+    unique_player_ids = []
+    seen_player_ids = set()
+    for subteam in subteams:
+        for player_id in subteam.get("player_ids", []):
+            player_id_str = str(player_id)
+            if ObjectId.is_valid(player_id_str) and player_id_str not in seen_player_ids:
+                seen_player_ids.add(player_id_str)
+                unique_player_ids.append(ObjectId(player_id_str))
+
+    players_by_id = {}
+    if unique_player_ids:
+        players = list(db.players.find({"_id": {"$in": unique_player_ids}}))
+        players_by_id = {str(player["_id"]): player for player in players}
+    player_lookup_ms = (time.perf_counter() - player_lookup_start) * 1000
+
     # Format response
     table_entries = []
     for subteam in subteams:
         # Generate team name from team and subteam_id
         team_name = f"{subteam.get('team', 'Unknown')}-{subteam.get('subteam_id', 0)}"
-        
-        # Fetch player names
-        player_names = []
-        for player_id in subteam.get("player_ids", []):
-            try:
-                player = db.players.find_one({"_id": ObjectId(player_id)})
-                if player:
-                    player_names.append(player.get("player_name", "Unknown"))
-                else:
-                    player_names.append("Unknown")
-            except:
-                player_names.append("Unknown")
-        
+
+        player_names = [
+            players_by_id.get(str(player_id), {}).get("player_name", "Unknown")
+            for player_id in subteam.get("player_ids", [])
+        ]
+
         # Join player names with comma
         players_display = ", ".join(player_names) if player_names else "No players"
-        
+
         entry = {
             "team_id": players_display,  # Display player names instead of ID
             "team_name": team_name,
@@ -69,5 +86,16 @@ def calculate_points_table(event: Optional[str] = None) -> List[Dict[str, Any]]:
         )
     )
     
+    total_ms = (time.perf_counter() - endpoint_start) * 1000
+    logger.info(
+        "calculate_points_table timing event=%s subteams_query_ms=%.2f player_lookup_ms=%.2f total_ms=%.2f subteams_count=%d unique_player_count=%d",
+        event,
+        subteams_query_ms,
+        player_lookup_ms,
+        total_ms,
+        len(subteams),
+        len(unique_player_ids),
+    )
+
     return table_entries
 

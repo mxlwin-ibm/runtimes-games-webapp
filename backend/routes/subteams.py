@@ -1,15 +1,18 @@
 from fastapi import APIRouter, HTTPException, status, Query
 from bson import ObjectId
-from typing import List, Optional
+from typing import List, Optional, Dict
 from backend.database import get_database
 from backend.models.subteam import SubTeam, SubTeamCreate, SubTeamInDB
 from backend.models.player import TeamName
 from backend.models.enums import Pool
+import logging
+import time
 
 router = APIRouter(prefix="/subteams", tags=["subteams"])
+logger = logging.getLogger(__name__)
 
 
-def subteam_helper(subteam, db=None) -> dict:
+def subteam_helper(subteam, db=None, players_by_id: Optional[Dict[str, dict]] = None) -> dict:
     """Convert MongoDB document to dict and fetch player names"""
     result = {
         "_id": str(subteam.get("_id")),
@@ -27,15 +30,22 @@ def subteam_helper(subteam, db=None) -> dict:
         "points": int(subteam.get("points", 0))
     }
     
-    # Fetch player names if db is provided
-    if db is not None:
+    # Fetch player names if preloaded players are provided
+    if players_by_id is not None:
+        result["player_names"] = [
+            players_by_id.get(str(player_id), {}).get("player_name", "Unknown")
+            for player_id in subteam.get("player_ids", [])
+        ]
+    elif db is not None:
         player_names = []
         for player_id in subteam.get("player_ids", []):
             try:
                 player = db.players.find_one({"_id": ObjectId(player_id)})
                 if player:
                     player_names.append(player.get("player_name", "Unknown"))
-            except:
+                else:
+                    player_names.append("Unknown")
+            except Exception:
                 player_names.append("Unknown")
         result["player_names"] = player_names
     
@@ -141,10 +151,42 @@ def get_subteams(
                 detail=f"Invalid pool. Must be one of: {', '.join([p.value for p in Pool])}"
             )
     
-    subteams = []
-    for subteam in db.subteams.find(query):
-        subteams.append(subteam_helper(subteam, db))
-    
+    endpoint_start = time.perf_counter()
+    subteams_query_start = time.perf_counter()
+    subteam_docs = list(db.subteams.find(query))
+    subteams_query_ms = (time.perf_counter() - subteams_query_start) * 1000
+
+    player_lookup_start = time.perf_counter()
+    unique_player_ids = []
+    seen_player_ids = set()
+    for subteam in subteam_docs:
+        for player_id in subteam.get("player_ids", []):
+            player_id_str = str(player_id)
+            if ObjectId.is_valid(player_id_str) and player_id_str not in seen_player_ids:
+                seen_player_ids.add(player_id_str)
+                unique_player_ids.append(ObjectId(player_id_str))
+
+    players_by_id = {}
+    if unique_player_ids:
+        players = list(db.players.find({"_id": {"$in": unique_player_ids}}))
+        players_by_id = {str(player["_id"]): player for player in players}
+    player_lookup_ms = (time.perf_counter() - player_lookup_start) * 1000
+
+    subteams = [subteam_helper(subteam, players_by_id=players_by_id) for subteam in subteam_docs]
+
+    total_ms = (time.perf_counter() - endpoint_start) * 1000
+    logger.info(
+        "get_subteams timing event=%s team=%s pool=%s subteams_query_ms=%.2f player_lookup_ms=%.2f total_ms=%.2f subteams_count=%d unique_player_count=%d",
+        event,
+        team,
+        pool,
+        subteams_query_ms,
+        player_lookup_ms,
+        total_ms,
+        len(subteam_docs),
+        len(unique_player_ids),
+    )
+
     return subteams
 
 
