@@ -43,7 +43,7 @@ import {
   Save,
   Notification,
 } from "@carbon/icons-react";
-import { getMatches, getPointsTable, getPlayers, getSubteams, getEvents, updateEvents, getAnnouncements } from '../services/api';
+import { getDashboard, getMatches, getPointsTable, getPlayers, getSubteams, getEvents, updateEvents, getAnnouncements } from '../services/api';
 import LoadingState from '../components/common/LoadingState';
 import EmptyState from '../components/common/EmptyState';
 import AnnouncementTicker from '../components/common/AnnouncementTicker';
@@ -73,26 +73,32 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch all data in parallel
-      const [matchesRes, pointsRes, teamsRes, subteamsRes, eventsRes, announcementsRes] = await Promise.all([
-        getMatches(),
-        getPointsTable({ event: 'foosball' }),
-        getPlayers(),
-        getSubteams({ event: 'foosball' }),
-        getEvents(),
-        getAnnouncements()
-      ]);
+      // Use new dashboard endpoint for initial load (single API call!)
+      const dashboardRes = await getDashboard({ event: 'foosball', cache_ttl: 30 });
+      const dashboardData = dashboardRes.data;
 
-      setMatches(matchesRes.data || []);
-      setPointsTable(pointsRes.data || []);
+      // Also fetch players/teams data for overall standings calculation
+      const teamsRes = await getPlayers();
+      
+      // Extract data from dashboard response
+      const matchesData = dashboardData.recentResults || [];
+      const pointsTableData = dashboardData.standings || [];
+      const announcementsData = dashboardData.announcements || [];
+      const eventsData = dashboardData.events || [];
+      
+      // We still need all matches for overall standings calculation
+      // Fetch separately since dashboard only returns recent results
+      const allMatchesRes = await getMatches();
+      
+      setMatches(allMatchesRes.data || []);
+      setPointsTable(pointsTableData);
       setTeams(teamsRes.data || []);
-      setSubteams(subteamsRes.data || []);
-      setUpcomingEvents(eventsRes.data || []);
-      setAnnouncements(announcementsRes.data || []);
+      setSubteams([]); // Not needed for current dashboard display
+      setUpcomingEvents(eventsData);
+      setAnnouncements(announcementsData);
       
       // Calculate overall tournament standings from final matches
-      // Pass teamsRes.data directly instead of using state
-      const standings = calculateOverallStandings(matchesRes.data || [], teamsRes.data || []);
+      const standings = calculateOverallStandings(allMatchesRes.data || [], teamsRes.data || []);
       setOverallStandings(standings);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
