@@ -181,3 +181,29 @@ def clear_dashboard_cache(event: Optional[str] = Query(None, description="Clear 
         cache.clear()
         return {"message": "All dashboard cache cleared"}
 
+
+@router.get("/cache/metrics")
+def get_cache_metrics():
+    """
+    Get cache performance metrics.
+    
+    Returns:
+    - hits: Number of cache hits
+    - misses: Number of cache misses
+    - total_requests: Total cache requests
+    - hit_rate_percent: Cache hit rate percentage
+    - cached_keys: Number of keys currently in cache
+    """
+    return cache.get_metrics()
+
+
+@router.post("/cache/metrics/reset")
+def reset_cache_metrics():
+    """
+    Reset cache metrics counters (admin only).
+    
+    Useful for monitoring cache performance over specific time periods.
+    """
+    cache.reset_metrics()
+    return {"message": "Cache metrics reset successfully"}
+
