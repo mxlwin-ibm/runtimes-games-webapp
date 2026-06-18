@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.136.3",
     "fastmcp>=2.10.6",
     "httpx>=0.28.1",
+    "motor>=3.3.2",
     "pymongo>=4.17.0",
     "python-dotenv>=1.2.2",
     "uvicorn>=0.34.0",

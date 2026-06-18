@@ -43,7 +43,7 @@ import {
   Save,
   Notification,
 } from "@carbon/icons-react";
-import { getMatches, getPointsTable, getPlayers, getSubteams, getEvents, updateEvents, getAnnouncements } from '../services/api';
+import { getDashboard, getMatches, getPointsTable, getPlayers, getSubteams, getEvents, updateEvents, getAnnouncements } from '../services/api';
 import LoadingState from '../components/common/LoadingState';
 import EmptyState from '../components/common/EmptyState';
 import AnnouncementTicker from '../components/common/AnnouncementTicker';
@@ -73,26 +73,33 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch all data in parallel
-      const [matchesRes, pointsRes, teamsRes, subteamsRes, eventsRes, announcementsRes] = await Promise.all([
-        getMatches(),
-        getPointsTable({ event: 'foosball' }),
-        getPlayers(),
-        getSubteams({ event: 'foosball' }),
-        getEvents(),
-        getAnnouncements()
-      ]);
+      // Use new dashboard endpoint for initial load (single API call!)
+      const dashboardRes = await getDashboard({ event: 'foosball', cache_ttl: 30 });
+      const dashboardData = dashboardRes.data;
 
-      setMatches(matchesRes.data || []);
-      setPointsTable(pointsRes.data || []);
+      // Also fetch players/teams data for overall standings calculation
+      const teamsRes = await getPlayers();
+      
+      // Extract data from dashboard response
+      const matchesData = dashboardData.recentResults || [];
+      const pointsTableData = dashboardData.standings || [];
+      const announcementsData = dashboardData.announcements || [];
+      const eventsData = dashboardData.events || [];
+      const mvpData = dashboardData.mvp || null;
+      
+      // We still need all matches for overall standings calculation
+      // Fetch separately since dashboard only returns recent results
+      const allMatchesRes = await getMatches();
+      
+      setMatches(allMatchesRes.data || []);
+      setPointsTable(pointsTableData);
       setTeams(teamsRes.data || []);
-      setSubteams(subteamsRes.data || []);
-      setUpcomingEvents(eventsRes.data || []);
-      setAnnouncements(announcementsRes.data || []);
+      setSubteams(mvpData ? [mvpData] : []); // Set MVP as subteam for compatibility
+      setUpcomingEvents(eventsData);
+      setAnnouncements(announcementsData);
       
       // Calculate overall tournament standings from final matches
-      // Pass teamsRes.data directly instead of using state
-      const standings = calculateOverallStandings(matchesRes.data || [], teamsRes.data || []);
+      const standings = calculateOverallStandings(allMatchesRes.data || [], teamsRes.data || []);
       setOverallStandings(standings);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -223,40 +230,45 @@ const Dashboard = () => {
     })
     .slice(0, 3);
 
-  // Calculate MVP (team with most wins, then most goals across all pools)
+  // Calculate MVP from dashboard data or points table
   const calculateMVP = () => {
-    if (subteams.length === 0) return null;
+    // If we have MVP from dashboard endpoint, use it
+    if (subteams.length > 0 && subteams[0].team_name) {
+      const mvp = subteams[0];
+      const winRatio = mvp.played > 0
+        ? Math.round((mvp.won / mvp.played) * 100)
+        : 0;
+
+      return {
+        name: mvp.team_id || 'Unknown', // team_id contains player names
+        team: mvp.team_name?.split('-')[0] || 'Unknown',
+        subteam: mvp.team_name || 'Unknown',
+        event: 'foosball',
+        wins: mvp.won || 0,
+        goals: mvp.gf || 0,
+        winRatio: `${winRatio}%`,
+      };
+    }
     
-    // Sort by: 1. Most wins (descending), 2. Most goals scored (descending)
-    const topSubteam = [...subteams]
-      .sort((a, b) => {
-        const winsA = a.win || 0;
-        const winsB = b.win || 0;
-        if (winsB !== winsA) return winsB - winsA;
-        return (b.gf || 0) - (a.gf || 0);
-      })[0];
+    // Fallback: use first entry from points table
+    if (pointsTable.length > 0) {
+      const topTeam = pointsTable[0];
+      const winRatio = topTeam.played > 0
+        ? Math.round((topTeam.won / topTeam.played) * 100)
+        : 0;
+
+      return {
+        name: topTeam.team_id || 'Unknown',
+        team: topTeam.team_name?.split('-')[0] || 'Unknown',
+        subteam: topTeam.team_name || 'Unknown',
+        event: 'foosball',
+        wins: topTeam.won || 0,
+        goals: topTeam.gf || 0,
+        winRatio: `${winRatio}%`,
+      };
+    }
     
-    if (!topSubteam) return null;
-
-    const winRatio = topSubteam.played > 0
-      ? Math.round((topSubteam.win / topSubteam.played) * 100)
-      : 0;
-
-    // Get player names from the subteam
-    const playerNames = topSubteam.player_names || [];
-    const displayName = playerNames.length > 0
-      ? playerNames.join(' & ')
-      : 'Unknown';
-
-    return {
-      name: displayName,
-      team: topSubteam.team,
-      subteam: `${topSubteam.team}-${topSubteam.subteam_id}`,
-      event: topSubteam.event,
-      wins: topSubteam.win || 0,
-      goals: topSubteam.gf || 0,
-      winRatio: `${winRatio}%`,
-    };
+    return null;
   };
 
   const currentMVP = calculateMVP();

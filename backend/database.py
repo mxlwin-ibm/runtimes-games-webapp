@@ -1,5 +1,5 @@
+from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import MongoClient
-from pymongo.server_api import ServerApi
 from typing import Optional
 import certifi
 import os
@@ -11,34 +11,52 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 DATABASE_NAME = "foosball"
 
-# Global database client
-client: Optional[MongoClient] = None
+# Global database clients
+async_client: Optional[AsyncIOMotorClient] = None
+sync_client: Optional[MongoClient] = None
 
 
 def get_database():
-    """Get the database instance"""
-    if client is None:
+    """Get the synchronous database instance (for backward compatibility)"""
+    if sync_client is None:
         raise RuntimeError("Database not initialized. Call connect_to_mongo first.")
-    return client[DATABASE_NAME]
+    return sync_client[DATABASE_NAME]
+
+
+def get_async_database():
+    """Get the async database instance"""
+    if async_client is None:
+        raise RuntimeError("Async database not initialized. Call connect_to_mongo first.")
+    return async_client[DATABASE_NAME]
 
 
 def connect_to_mongo():
-    """Connect to MongoDB on startup"""
-    global client
+    """Connect to MongoDB on startup (both sync and async clients)"""
+    global async_client, sync_client
 
-    client = MongoClient(
+    # Async client for Motor
+    async_client = AsyncIOMotorClient(
         MONGO_URI,
         tls=True,
         tlsCAFile=certifi.where(),
     )
-    print(f"Connected to MongoDB at {MONGO_URI}")
+    
+    # Sync client for backward compatibility
+    sync_client = MongoClient(
+        MONGO_URI,
+        tls=True,
+        tlsCAFile=certifi.where(),
+    )
+    print(f"Connected to MongoDB (async + sync) at {MONGO_URI}")
 
 
 def close_mongo_connection():
-    """Close MongoDB connection on shutdown"""
-    global client
-    if client:
-        client.close()
-        print("Closed MongoDB connection")
+    """Close MongoDB connections on shutdown"""
+    global async_client, sync_client
+    if async_client:
+        async_client.close()
+    if sync_client:
+        sync_client.close()
+        print("Closed MongoDB connections")
 
 

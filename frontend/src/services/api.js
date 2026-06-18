@@ -55,6 +55,20 @@ export const updateEvents = (events) => api.put("/events/", events);
 export const getAnnouncements = () => api.get("/announcements/");
 export const updateAnnouncements = (announcements) => api.put("/announcements/", announcements);
 
+// Dashboard API
+export const getDashboard = (params) => {
+  const queryParams = new URLSearchParams();
+  if (params?.event) queryParams.append("event", params.event);
+  if (params?.cache_ttl !== undefined) queryParams.append("cache_ttl", params.cache_ttl);
+  const queryString = queryParams.toString();
+  return api.get(`/dashboard/${queryString ? `?${queryString}` : ""}`);
+};
+export const clearDashboardCache = (event) => {
+  const queryParams = event ? `?event=${event}` : "";
+  return api.delete(`/dashboard/cache${queryParams}`);
+};
+export const getDashboardMetrics = () => api.get("/dashboard/cache/metrics");
+
 export default api;
 
 // Made with Bob

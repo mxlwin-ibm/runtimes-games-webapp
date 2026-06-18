@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from backend.models.match import MatchCreate, MatchUpdate, Match, MatchStatus
 from backend.database import get_database
+from backend.utils.cache import cache
 from bson import ObjectId
 from typing import List
 
@@ -125,6 +126,10 @@ def create_match(match: MatchCreate):
     
     result = db.matches.insert_one(match_dict)
     match_dict["_id"] = str(result.inserted_id)
+    
+    # Auto-invalidate dashboard cache for this event
+    cache_key = f"dashboard:{match.event}"
+    cache.delete(cache_key)
     
     return match_dict
 
@@ -266,6 +271,11 @@ def update_match(id: str, match_update: MatchUpdate):
                 }}
             )
     
+    # Auto-invalidate dashboard cache for this event
+    event = existing_match.get("event", "foosball")
+    cache_key = f"dashboard:{event}"
+    cache.delete(cache_key)
+    
     # Get updated match
     updated_match = db.matches.find_one({"_id": ObjectId(id)})
     return match_helper(updated_match)
@@ -286,11 +296,20 @@ def delete_match(id: str):
     # Find and delete the match
     result = db.matches.delete_one({"_id": ObjectId(id)})
     
+    # Get event before deletion for cache invalidation
+    match_to_delete = db.matches.find_one({"_id": ObjectId(id)})
+    
     if result.deleted_count == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with id '{id}' not found"
         )
+    
+    # Auto-invalidate dashboard cache for this event
+    if match_to_delete:
+        event = match_to_delete.get("event", "foosball")
+        cache_key = f"dashboard:{event}"
+        cache.delete(cache_key)
     
     return None
 
