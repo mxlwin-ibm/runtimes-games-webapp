@@ -1,40 +1,47 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
-import json
-import os
+from backend.database import get_database
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 
-# Path to announcements.json file
-ANNOUNCEMENTS_FILE = os.path.join(os.path.dirname(__file__), "..", "announcements.json")
+ANNOUNCEMENTS_DOCUMENT_ID = "active_announcements"
 
 
 @router.get("/", response_model=List[str])
 def get_announcements():
-    """Get all active announcements from JSON file"""
-    try:
-        with open(ANNOUNCEMENTS_FILE, 'r') as f:
-            announcements = json.load(f)
-        return announcements
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Announcements file not found")
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Invalid JSON in announcements file")
+    """Get all active announcements from MongoDB"""
+    db = get_database()
+
+    announcement_doc = db.announcements.find_one({"_id": ANNOUNCEMENTS_DOCUMENT_ID})
+
+    if not announcement_doc:
+        return []
+
+    announcements = announcement_doc.get("items", [])
+
+    if not isinstance(announcements, list) or not all(isinstance(item, str) for item in announcements):
+        raise HTTPException(status_code=500, detail="Invalid announcements data in database")
+
+    return announcements
 
 
 @router.put("/")
 def update_announcements(announcements: List[str]):
     """Update all announcements (admin only)"""
+    db = get_database()
+
+    if not all(isinstance(a, str) for a in announcements):
+        raise HTTPException(status_code=400, detail="All announcements must be strings")
+
+    sanitized_announcements = [announcement.strip() for announcement in announcements if announcement.strip()]
+
     try:
-        # Validate that all items are strings
-        if not all(isinstance(a, str) for a in announcements):
-            raise HTTPException(status_code=400, detail="All announcements must be strings")
-        
-        # Write to JSON file
-        with open(ANNOUNCEMENTS_FILE, 'w') as f:
-            json.dump(announcements, f, indent=2)
-        
-        return {"message": "Announcements updated successfully", "count": len(announcements)}
+        db.announcements.update_one(
+            {"_id": ANNOUNCEMENTS_DOCUMENT_ID},
+            {"$set": {"items": sanitized_announcements}},
+            upsert=True
+        )
+        return {"message": "Announcements updated successfully", "count": len(sanitized_announcements)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update announcements: {str(e)}")
 
