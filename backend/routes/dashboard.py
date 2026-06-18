@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 from backend.database import get_database
 from backend.routes.matches import match_helper
 from backend.services.points_table import calculate_points_table
+from backend.utils.cache import cache
 import json
 import os
 
@@ -112,9 +113,12 @@ def get_events_data() -> List[Dict[str, str]]:
 
 
 @router.get("/")
-def get_dashboard(event: str = Query("foosball", description="Filter by event name")):
+def get_dashboard(
+    event: str = Query("foosball", description="Filter by event name"),
+    cache_ttl: int = Query(30, description="Cache TTL in seconds (0 to disable)", ge=0, le=300)
+):
     """
-    Get all dashboard data in a single request.
+    Get all dashboard data in a single request with caching.
     
     Returns:
     - stats: Overall statistics (matches, teams, goals)
@@ -125,10 +129,25 @@ def get_dashboard(event: str = Query("foosball", description="Filter by event na
     - mvp: Top team in standings
     - announcements: Active announcements
     - events: Upcoming events
+    
+    Caching:
+    - Default TTL: 30 seconds
+    - Can be adjusted via cache_ttl parameter (0-300 seconds)
+    - Set cache_ttl=0 to bypass cache
     """
+    # Create cache key based on event
+    cache_key = f"dashboard:{event}"
+    
+    # Try to get from cache if TTL > 0
+    if cache_ttl > 0:
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            return cached_data
+    
+    # Cache miss or disabled - fetch fresh data
     db = get_database()
     
-    return {
+    dashboard_data = {
         "stats": get_stats(db, event),
         "nextMatch": get_next_match(db, event),
         "latestResult": get_latest_result(db, event),
@@ -138,4 +157,27 @@ def get_dashboard(event: str = Query("foosball", description="Filter by event na
         "announcements": get_announcements_data(db),
         "events": get_events_data()
     }
+    
+    # Store in cache if TTL > 0
+    if cache_ttl > 0:
+        cache.set(cache_key, dashboard_data, ttl_seconds=cache_ttl)
+    
+    return dashboard_data
+
+
+@router.delete("/cache")
+def clear_dashboard_cache(event: Optional[str] = Query(None, description="Clear cache for specific event, or all if not provided")):
+    """
+    Clear dashboard cache (admin only).
+    
+    Use this after updating matches, announcements, or other dashboard data
+    to ensure users see fresh data immediately.
+    """
+    if event:
+        cache_key = f"dashboard:{event}"
+        cache.delete(cache_key)
+        return {"message": f"Cache cleared for event: {event}"}
+    else:
+        cache.clear()
+        return {"message": "All dashboard cache cleared"}
 
