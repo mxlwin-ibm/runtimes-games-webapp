@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from typing import Optional
 import certifi
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,6 +15,7 @@ DATABASE_NAME = "foosball"
 # Global database clients
 async_client: Optional[AsyncIOMotorClient] = None
 sync_client: Optional[MongoClient] = None
+logger = logging.getLogger(__name__)
 
 
 def get_database():
@@ -28,6 +30,15 @@ def get_async_database():
     if async_client is None:
         raise RuntimeError("Async database not initialized. Call connect_to_mongo first.")
     return async_client[DATABASE_NAME]
+
+
+def ensure_indexes():
+    """Ensure required MongoDB indexes exist for performance-critical queries."""
+    db = get_database()
+    db.subteams.create_index("event")
+    db.subteams.create_index("team")
+    db.subteams.create_index("pool")
+    logger.info("Ensured MongoDB indexes on subteams.event, subteams.team, and subteams.pool")
 
 
 def connect_to_mongo():
@@ -47,6 +58,7 @@ def connect_to_mongo():
         tls=True,
         tlsCAFile=certifi.where(),
     )
+    ensure_indexes()
     print(f"Connected to MongoDB (async + sync) at {MONGO_URI}")
 
 
