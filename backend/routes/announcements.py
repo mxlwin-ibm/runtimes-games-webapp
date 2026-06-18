@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from backend.database import get_database
+from backend.utils.cache import cache
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 
@@ -41,6 +42,10 @@ def update_announcements(announcements: List[str]):
             {"$set": {"items": sanitized_announcements}},
             upsert=True
         )
+        
+        # Auto-invalidate all dashboard caches since announcements are global
+        cache.clear()
+        
         return {"message": "Announcements updated successfully", "count": len(sanitized_announcements)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update announcements: {str(e)}")

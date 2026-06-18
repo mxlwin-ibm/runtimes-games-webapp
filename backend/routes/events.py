@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from pydantic import BaseModel
+from backend.utils.cache import cache
 import json
 import os
 
@@ -39,6 +40,9 @@ def update_events(events: List[Event]):
         # Write to JSON file
         with open(EVENTS_FILE, 'w') as f:
             json.dump(events_data, f, indent=2)
+        
+        # Auto-invalidate all dashboard caches since events are global
+        cache.clear()
         
         return {"message": "Events updated successfully", "count": len(events_data)}
     except Exception as e:
