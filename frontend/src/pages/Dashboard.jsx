@@ -41,10 +41,13 @@ import {
   Events,
   Edit,
   Save,
+  Notification,
 } from "@carbon/icons-react";
-import { getMatches, getPointsTable, getPlayers, getSubteams, getEvents, updateEvents } from '../services/api';
+import { getMatches, getPointsTable, getPlayers, getSubteams, getEvents, updateEvents, getAnnouncements } from '../services/api';
 import LoadingState from '../components/common/LoadingState';
 import EmptyState from '../components/common/EmptyState';
+import AnnouncementTicker from '../components/common/AnnouncementTicker';
+import AnnouncementManager from '../components/forms/AnnouncementManager';
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
@@ -57,6 +60,8 @@ const Dashboard = () => {
   const [overallStandings, setOverallStandings] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [isEditingEvents, setIsEditingEvents] = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const { isAdmin } = useAuth();
 
   useEffect(() => {
@@ -69,12 +74,13 @@ const Dashboard = () => {
       setError(null);
 
       // Fetch all data in parallel
-      const [matchesRes, pointsRes, teamsRes, subteamsRes, eventsRes] = await Promise.all([
+      const [matchesRes, pointsRes, teamsRes, subteamsRes, eventsRes, announcementsRes] = await Promise.all([
         getMatches(),
         getPointsTable({ event: 'foosball' }),
         getPlayers(),
         getSubteams({ event: 'foosball' }),
-        getEvents()
+        getEvents(),
+        getAnnouncements()
       ]);
 
       setMatches(matchesRes.data || []);
@@ -82,6 +88,7 @@ const Dashboard = () => {
       setTeams(teamsRes.data || []);
       setSubteams(subteamsRes.data || []);
       setUpcomingEvents(eventsRes.data || []);
+      setAnnouncements(announcementsRes.data || []);
       
       // Calculate overall tournament standings from final matches
       // Pass teamsRes.data directly instead of using state
@@ -295,19 +302,43 @@ const Dashboard = () => {
       }}>
         {/* Page Header */}
         <div style={{ marginBottom: 'var(--cds-spacing-07, 2rem)' }}>
-          <Heading style={{ 
+          <Heading style={{
             marginBottom: 'var(--cds-spacing-03, 0.5rem)',
             color: 'var(--cds-text-primary, #161616)',
           }}>
             Dashboard
           </Heading>
-          <p style={{ 
+          <p style={{
             color: 'var(--cds-text-secondary, #525252)',
             fontSize: '0.875rem',
             margin: 0,
           }}>
       
           </p>
+        </div>
+
+        {/* Announcement Ticker with Admin Button */}
+        <div style={{ position: 'relative' }}>
+          <AnnouncementTicker announcements={announcements} />
+          {isAdmin && announcements.length > 0 && (
+            <Button
+              size="sm"
+              kind="ghost"
+              renderIcon={Notification}
+              iconDescription="Manage Announcements"
+              onClick={() => setIsAnnouncementModalOpen(true)}
+              style={{
+                position: 'absolute',
+                right: '16px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'white',
+                zIndex: 1,
+              }}
+            >
+              Manage
+            </Button>
+          )}
         </div>
 
         {/* HERO SECTION */}
@@ -1154,6 +1185,16 @@ const Dashboard = () => {
             </div>
           )}
         </Tile>
+
+        {/* Announcement Manager Modal */}
+        <AnnouncementManager
+          open={isAnnouncementModalOpen}
+          onClose={() => {
+            setIsAnnouncementModalOpen(false);
+            // Refresh announcements after closing modal
+            fetchDashboardData();
+          }}
+        />
       </div>
     </div>
   );

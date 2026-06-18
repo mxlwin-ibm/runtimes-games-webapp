@@ -51,6 +51,10 @@ export const getPointsTable = (params) => {
 export const getEvents = () => api.get("/events/");
 export const updateEvents = (events) => api.put("/events/", events);
 
+// Announcements API
+export const getAnnouncements = () => api.get("/announcements/");
+export const updateAnnouncements = (announcements) => api.put("/announcements/", announcements);
+
 export default api;
 
 // Made with Bob
