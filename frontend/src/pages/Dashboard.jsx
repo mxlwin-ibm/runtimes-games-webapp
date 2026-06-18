@@ -386,7 +386,17 @@ const Dashboard = () => {
                   margin: 'var(--cds-spacing-02, 0.25rem) 0 0 0',
                   fontWeight: '400',
                 }}>
-                  {nextMatch ? `${nextMatch.match_type === 'league' ? 'League Stage' : 'Playoff Stage'} · Round ${nextMatch.round}` : `League Stage · Round ${tournamentStats.round}`}
+                  {nextMatch
+                    ? `${nextMatch.match_type === 'league'
+                        ? 'League Stage'
+                        : 'Playoff Stage'} · ${nextMatch.match_type === 'quarter_final'
+                        ? 'Quarter Final'
+                        : nextMatch.match_type === 'semi_final'
+                          ? 'Semi Final'
+                          : nextMatch.match_type === 'final'
+                            ? 'Final'
+                            : `Round ${nextMatch.round}`}`
+                    : `League Stage · Round ${tournamentStats.round}`}
                 </p>
               </div>
             </div>
@@ -538,7 +548,13 @@ const Dashboard = () => {
                     padding: 'var(--cds-spacing-03, 0.5rem)',
                     backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
                   }}>
-                    Round {nextMatch.round}
+                    {nextMatch.match_type === 'quarter_final'
+                      ? 'Quarter Final'
+                      : nextMatch.match_type === 'semi_final'
+                        ? 'Semi Final'
+                        : nextMatch.match_type === 'final'
+                          ? 'Final'
+                          : `Round ${nextMatch.round}`}
                   </div>
                 </>
               ) : (
