@@ -74,7 +74,7 @@ const Dashboard = () => {
       setError(null);
 
       // Use new dashboard endpoint for initial load (single API call!)
-      const dashboardRes = await getDashboard({ event: 'foosball', cache_ttl: 30 });
+      const dashboardRes = await getDashboard({ event: 'foosball' });
       const dashboardData = dashboardRes.data;
 
       // Also fetch players/teams data for overall standings calculation

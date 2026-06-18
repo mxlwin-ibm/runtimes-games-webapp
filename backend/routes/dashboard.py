@@ -3,7 +3,6 @@ from typing import Optional, Dict, Any, List
 from backend.database import get_async_database, get_database
 from backend.routes.matches import match_helper
 from backend.services.points_table import calculate_points_table
-from backend.utils.cache import cache
 import json
 import os
 import asyncio
@@ -200,17 +199,14 @@ async def get_events_data_async() -> List[Dict[str, str]]:
 
 
 @router.get("/")
-async def get_dashboard(
-    event: str = Query("foosball", description="Filter by event name"),
-    cache_ttl: int = Query(30, description="Cache TTL in seconds (0 to disable)", ge=0, le=300)
-):
+async def get_dashboard(event: str = Query("foosball", description="Filter by event name")):
     """
-    Get all dashboard data in a single request with caching and parallel execution.
+    Get all dashboard data in a single request with parallel execution.
     
     Optimizations:
     - Fetches matches once, derives all match-related data
     - Computes standings once, derives MVP from it
-    - Parallel execution for independent queries
+    - Parallel execution for independent queries using Motor async driver
     
     Returns:
     - stats: Overall statistics (matches, teams, goals)
@@ -222,25 +218,11 @@ async def get_dashboard(
     - announcements: Active announcements
     - events: Upcoming events
     
-    Caching:
-    - Default TTL: 30 seconds
-    - Can be adjusted via cache_ttl parameter (0-300 seconds)
-    - Set cache_ttl=0 to bypass cache
-    
     Performance:
-    - Optimized queries: 3 parallel requests instead of 8
-    - Typical response time: 30-100ms (vs 50-150ms before)
+    - Optimized queries: 4 parallel async requests
+    - Typical response time: 30-100ms
     """
-    # Create cache key based on event
-    cache_key = f"dashboard:{event}"
-    
-    # Try to get from cache if TTL > 0
-    if cache_ttl > 0:
-        cached_data = cache.get(cache_key)
-        if cached_data is not None:
-            return cached_data
-    
-    # Cache miss or disabled - fetch fresh data using async Motor driver
+    # Fetch fresh data using async Motor driver
     async_db = get_async_database()
     
     # Fetch data in parallel using native async operations (no thread pool needed!)
@@ -278,7 +260,7 @@ async def get_dashboard(
             "gd": top_team.get("gd")
         }
     
-    dashboard_data = {
+    return {
         "stats": match_data["stats"],
         "nextMatch": match_data["nextMatch"],
         "latestResult": match_data["latestResult"],
@@ -288,53 +270,4 @@ async def get_dashboard(
         "announcements": announcements,
         "events": events
     }
-    
-    # Store in cache if TTL > 0
-    if cache_ttl > 0:
-        cache.set(cache_key, dashboard_data, ttl_seconds=cache_ttl)
-    
-    return dashboard_data
-
-
-@router.delete("/cache")
-def clear_dashboard_cache(event: Optional[str] = Query(None, description="Clear cache for specific event, or all if not provided")):
-    """
-    Clear dashboard cache (admin only).
-    
-    Use this after updating matches, announcements, or other dashboard data
-    to ensure users see fresh data immediately.
-    """
-    if event:
-        cache_key = f"dashboard:{event}"
-        cache.delete(cache_key)
-        return {"message": f"Cache cleared for event: {event}"}
-    else:
-        cache.clear()
-        return {"message": "All dashboard cache cleared"}
-
-
-@router.get("/cache/metrics")
-def get_cache_metrics():
-    """
-    Get cache performance metrics.
-    
-    Returns:
-    - hits: Number of cache hits
-    - misses: Number of cache misses
-    - total_requests: Total cache requests
-    - hit_rate_percent: Cache hit rate percentage
-    - cached_keys: Number of keys currently in cache
-    """
-    return cache.get_metrics()
-
-
-@router.post("/cache/metrics/reset")
-def reset_cache_metrics():
-    """
-    Reset cache metrics counters (admin only).
-    
-    Useful for monitoring cache performance over specific time periods.
-    """
-    cache.reset_metrics()
-    return {"message": "Cache metrics reset successfully"}
 
