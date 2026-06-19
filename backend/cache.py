@@ -178,4 +178,12 @@ def announcements_cache_key(active_only: bool = False) -> str:
     """Generate cache key for announcements."""
     return f"announcements:{'active' if active_only else 'all'}"
 
-# Made with Bob
+
+def dashboard_cache_key(event: str = "foosball") -> str:
+    """Generate cache key for dashboard."""
+    return f"dashboard:{event}"
+
+
+async def invalidate_dashboard_cache():
+    """Invalidate all dashboard cache entries."""
+    await delete_pattern("dashboard:*")
