@@ -1,16 +1,18 @@
 from fastapi import APIRouter, Query
 from backend.services.points_table import calculate_points_table
+from backend.cache import get_cached, set_cached, points_table_cache_key
 from typing import List, Dict, Any, Optional
 
 router = APIRouter(prefix="/points-table", tags=["points-table"])
 
 
 @router.get("/", response_model=List[Dict[str, Any]])
-def get_points_table(event: Optional[str] = Query(None, description="Filter by event name")):
+async def get_points_table(event: Optional[str] = Query(None, description="Filter by event name")):
     """
     Get the current points table/standings.
     
     Calculates standings dynamically from all played matches.
+    Uses Redis caching with 5-minute TTL for performance.
     
     Returns sorted list by:
     1. Points (descending)
@@ -21,6 +23,19 @@ def get_points_table(event: Optional[str] = Query(None, description="Filter by e
     - Win = 3 points
     - Loss = 0 points
     """
-    return calculate_points_table(event)
+    # Try to get from cache
+    cache_key = points_table_cache_key(event)
+    cached_data = await get_cached(cache_key)
+    
+    if cached_data is not None:
+        return cached_data
+    
+    # Calculate if not in cache
+    points_table = calculate_points_table(event)
+    
+    # Cache the result for 5 minutes (300 seconds)
+    await set_cached(cache_key, points_table, ttl=300)
+    
+    return points_table
 
 

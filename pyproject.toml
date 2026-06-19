@@ -12,5 +12,6 @@ dependencies = [
     "motor>=3.3.2",
     "pymongo>=4.17.0",
     "python-dotenv>=1.2.2",
+    "upstash-redis>=1.7.0",
     "uvicorn>=0.34.0",
 ]

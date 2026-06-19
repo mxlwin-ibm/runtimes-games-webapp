@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from backend.models.match import MatchCreate, MatchUpdate, Match, MatchStatus
 from backend.database import get_database
+from backend.cache import invalidate_points_table_cache
 from bson import ObjectId
 from typing import List
 
@@ -28,7 +29,7 @@ def match_helper(match) -> dict:
 
 
 @router.post("/", response_model=Match, status_code=status.HTTP_201_CREATED)
-def create_match(match: MatchCreate):
+async def create_match(match: MatchCreate):
     """Create a new match"""
     db = get_database()
     
@@ -126,6 +127,9 @@ def create_match(match: MatchCreate):
     result = db.matches.insert_one(match_dict)
     match_dict["_id"] = str(result.inserted_id)
     
+    # Invalidate points table cache after creating a match
+    await invalidate_points_table_cache()
+    
     return match_dict
 
 
@@ -166,7 +170,7 @@ def get_match(id: str):
 
 
 @router.put("/{id}", response_model=Match)
-def update_match(id: str, match_update: MatchUpdate):
+async def update_match(id: str, match_update: MatchUpdate):
     """Update match scores and status"""
     db = get_database()
     
@@ -268,11 +272,15 @@ def update_match(id: str, match_update: MatchUpdate):
     
     # Get updated match
     updated_match = db.matches.find_one({"_id": ObjectId(id)})
+    
+    # Invalidate points table cache after updating a match
+    await invalidate_points_table_cache()
+    
     return match_helper(updated_match)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_match(id: str):
+async def delete_match(id: str):
     """Delete a match by MongoDB ObjectId"""
     db = get_database()
     
@@ -291,6 +299,9 @@ def delete_match(id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with id '{id}' not found"
         )
+    
+    # Invalidate points table cache after deleting a match
+    await invalidate_points_table_cache()
     
     return None
 

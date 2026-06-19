@@ -56,6 +56,7 @@ const Dashboard = () => {
   const [matches, setMatches] = useState([]);
   const [pointsTable, setPointsTable] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState(null);
   const [subteams, setSubteams] = useState([]);
   const [overallStandings, setOverallStandings] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
@@ -86,6 +87,7 @@ const Dashboard = () => {
       const announcementsData = dashboardData.announcements || [];
       const eventsData = dashboardData.events || [];
       const mvpData = dashboardData.mvp || null;
+      const statsData = dashboardData.stats || null;
       
       // We still need all matches for overall standings calculation
       // Fetch separately since dashboard only returns recent results
@@ -94,6 +96,7 @@ const Dashboard = () => {
       setMatches(allMatchesRes.data || []);
       setPointsTable(pointsTableData);
       setTeams(teamsRes.data || []);
+      setDashboardStats(statsData);
       setSubteams(mvpData ? [mvpData] : []); // Set MVP as subteam for compatibility
       setUpcomingEvents(eventsData);
       setAnnouncements(announcementsData);
@@ -189,10 +192,10 @@ const Dashboard = () => {
   // Calculate tournament stats from real data
   // Count total subteams for the event
   const tournamentStats = {
-    teams: subteams.length,
-    matches: matches.length,
+    teams: dashboardStats?.totalTeams ?? 0,
+    matches: dashboardStats?.totalMatches ?? matches.length,
     round: matches.length > 0 ? Math.max(...matches.map(m => m.round || 1)) : 1,
-    completed: matches.filter(m => m.match_status === 'played').length,
+    completed: dashboardStats?.playedMatches ?? matches.filter(m => m.match_status === 'played').length,
   };
 
   // Get next scheduled match - sort by date and time
@@ -383,7 +386,17 @@ const Dashboard = () => {
                   margin: 'var(--cds-spacing-02, 0.25rem) 0 0 0',
                   fontWeight: '400',
                 }}>
-                  {nextMatch ? `${nextMatch.match_type === 'league' ? 'League Stage' : 'Playoff Stage'} · Round ${nextMatch.round}` : `League Stage · Round ${tournamentStats.round}`}
+                  {nextMatch
+                    ? `${nextMatch.match_type === 'league'
+                        ? 'League Stage'
+                        : 'Playoff Stage'} · ${nextMatch.match_type === 'quarter_final'
+                        ? 'Quarter Final'
+                        : nextMatch.match_type === 'semi_final'
+                          ? 'Semi Final'
+                          : nextMatch.match_type === 'final'
+                            ? 'Final'
+                            : `Round ${nextMatch.round}`}`
+                    : `League Stage · Round ${tournamentStats.round}`}
                 </p>
               </div>
             </div>
@@ -535,7 +548,13 @@ const Dashboard = () => {
                     padding: 'var(--cds-spacing-03, 0.5rem)',
                     backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
                   }}>
-                    Round {nextMatch.round}
+                    {nextMatch.match_type === 'quarter_final'
+                      ? 'Quarter Final'
+                      : nextMatch.match_type === 'semi_final'
+                        ? 'Semi Final'
+                        : nextMatch.match_type === 'final'
+                          ? 'Final'
+                          : `Round ${nextMatch.round}`}
                   </div>
                 </>
               ) : (
