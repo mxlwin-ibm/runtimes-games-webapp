@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from backend.database import get_database
+from backend.cache import get_cached, set_cached, invalidate_announcements_cache, announcements_cache_key
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 
@@ -8,25 +9,38 @@ ANNOUNCEMENTS_DOCUMENT_ID = "active_announcements"
 
 
 @router.get("/", response_model=List[str])
-def get_announcements():
-    """Get all active announcements from MongoDB"""
+async def get_announcements():
+    """
+    Get all active announcements from MongoDB.
+    Uses Redis caching with 5-minute TTL for performance.
+    """
+    # Try to get from cache
+    cache_key = announcements_cache_key(active_only=True)
+    cached_data = await get_cached(cache_key)
+    
+    if cached_data is not None:
+        return cached_data
+    
+    # Fetch from database if not in cache
     db = get_database()
-
     announcement_doc = db.announcements.find_one({"_id": ANNOUNCEMENTS_DOCUMENT_ID})
 
     if not announcement_doc:
-        return []
-
-    announcements = announcement_doc.get("items", [])
-
-    if not isinstance(announcements, list) or not all(isinstance(item, str) for item in announcements):
-        raise HTTPException(status_code=500, detail="Invalid announcements data in database")
-
+        announcements = []
+    else:
+        announcements = announcement_doc.get("items", [])
+        
+        if not isinstance(announcements, list) or not all(isinstance(item, str) for item in announcements):
+            raise HTTPException(status_code=500, detail="Invalid announcements data in database")
+    
+    # Cache the result for 5 minutes (300 seconds)
+    await set_cached(cache_key, announcements, ttl=300)
+    
     return announcements
 
 
 @router.put("/")
-def update_announcements(announcements: List[str]):
+async def update_announcements(announcements: List[str]):
     """Update all announcements (admin only)"""
     db = get_database()
 
@@ -41,6 +55,9 @@ def update_announcements(announcements: List[str]):
             {"$set": {"items": sanitized_announcements}},
             upsert=True
         )
+        
+        # Invalidate cache after update
+        await invalidate_announcements_cache()
         
         return {"message": "Announcements updated successfully", "count": len(sanitized_announcements)}
     except Exception as e:

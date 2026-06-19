@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from backend.database import connect_to_mongo, close_mongo_connection, get_database
+from backend.cache import init_redis
 from backend.routes import matches, points_table, players, subteams, auth, events, announcements, dashboard
 import os
 from dotenv import load_dotenv
@@ -12,6 +13,7 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     # Startup
     connect_to_mongo()
+    init_redis()
     yield
     # Shutdown
     close_mongo_connection()
