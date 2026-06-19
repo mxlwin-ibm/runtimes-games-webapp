@@ -25,12 +25,15 @@ async def get_points_table(event: Optional[str] = Query(None, description="Filte
     """
     # Try to get from cache
     cache_key = points_table_cache_key(event)
+    print(f"🔍 Looking up cache key: {cache_key}")
     cached_data = await get_cached(cache_key)
     
     if cached_data is not None:
+        print(f"✅ Cache HIT for key: {cache_key}")
         return cached_data
     
     # Calculate if not in cache
+    print(f"❌ Cache MISS for key: {cache_key} - calculating from database")
     points_table = calculate_points_table(event)
     
     # Cache the result for 5 minutes (300 seconds)

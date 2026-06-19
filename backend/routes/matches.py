@@ -128,6 +128,7 @@ async def create_match(match: MatchCreate):
     match_dict["_id"] = str(result.inserted_id)
     
     # Invalidate points table cache after creating a match
+    print(f"🗑️  Invalidating points table cache after match creation")
     await invalidate_points_table_cache()
     
     return match_dict
@@ -274,6 +275,7 @@ async def update_match(id: str, match_update: MatchUpdate):
     updated_match = db.matches.find_one({"_id": ObjectId(id)})
     
     # Invalidate points table cache after updating a match
+    print(f"🗑️  Invalidating points table cache after match update")
     await invalidate_points_table_cache()
     
     return match_helper(updated_match)
@@ -301,6 +303,7 @@ async def delete_match(id: str):
         )
     
     # Invalidate points table cache after deleting a match
+    print(f"🗑️  Invalidating points table cache after match deletion")
     await invalidate_points_table_cache()
     
     return None
