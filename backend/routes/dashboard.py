@@ -269,7 +269,10 @@ async def get_dashboard(event: str = Query("foosball", description="Filter by ev
             "points": top_team.get("points"),
             "played": top_team.get("played"),
             "won": top_team.get("won"),
-            "gd": top_team.get("gd")
+            "lost": top_team.get("lost"),
+            "gf": top_team.get("gf"),  # Goals for
+            "ga": top_team.get("ga"),  # Goals against
+            "gd": top_team.get("gd")   # Goal difference
         }
     
     dashboard_data = {
