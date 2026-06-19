@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from backend.models.match import MatchCreate, MatchUpdate, Match, MatchStatus
 from backend.database import get_database
-from backend.cache import invalidate_points_table_cache
+from backend.cache import invalidate_points_table_cache, invalidate_dashboard_cache
 from bson import ObjectId
 from typing import List
 
@@ -127,9 +127,10 @@ async def create_match(match: MatchCreate):
     result = db.matches.insert_one(match_dict)
     match_dict["_id"] = str(result.inserted_id)
     
-    # Invalidate points table cache after creating a match
-    print(f"🗑️  Invalidating points table cache after match creation")
+    # Invalidate caches after creating a match
+    print(f"🗑️  Invalidating points table and dashboard cache after match creation")
     await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return match_dict
 
@@ -274,9 +275,10 @@ async def update_match(id: str, match_update: MatchUpdate):
     # Get updated match
     updated_match = db.matches.find_one({"_id": ObjectId(id)})
     
-    # Invalidate points table cache after updating a match
-    print(f"🗑️  Invalidating points table cache after match update")
+    # Invalidate caches after updating a match
+    print(f"🗑️  Invalidating points table and dashboard cache after match update")
     await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return match_helper(updated_match)
 
@@ -302,9 +304,10 @@ async def delete_match(id: str):
             detail=f"Match with id '{id}' not found"
         )
     
-    # Invalidate points table cache after deleting a match
-    print(f"🗑️  Invalidating points table cache after match deletion")
+    # Invalidate caches after deleting a match
+    print(f"🗑️  Invalidating points table and dashboard cache after match deletion")
     await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return None
 
