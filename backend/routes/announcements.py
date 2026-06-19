@@ -16,12 +16,15 @@ async def get_announcements():
     """
     # Try to get from cache
     cache_key = announcements_cache_key(active_only=True)
+    print(f"🔍 Looking up cache key: {cache_key}")
     cached_data = await get_cached(cache_key)
     
     if cached_data is not None:
+        print(f"✅ Cache HIT for key: {cache_key}")
         return cached_data
     
     # Fetch from database if not in cache
+    print(f"❌ Cache MISS for key: {cache_key} - fetching from database")
     db = get_database()
     announcement_doc = db.announcements.find_one({"_id": ANNOUNCEMENTS_DOCUMENT_ID})
 
@@ -57,6 +60,7 @@ async def update_announcements(announcements: List[str]):
         )
         
         # Invalidate cache after update
+        print(f"🗑️  Invalidating announcements cache")
         await invalidate_announcements_cache()
         
         return {"message": "Announcements updated successfully", "count": len(sanitized_announcements)}

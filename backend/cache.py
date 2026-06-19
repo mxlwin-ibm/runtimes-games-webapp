@@ -59,11 +59,24 @@ async def get_cached(key: str) -> Optional[Any]:
     
     try:
         cached = redis_client.get(key)
-        if cached:
-            return json.loads(cached)
-        return None
+        if cached is None:
+            return None
+        
+        # Upstash SDK returns string, need to parse JSON
+        if isinstance(cached, str):
+            try:
+                return json.loads(cached)
+            except json.JSONDecodeError as je:
+                print(f"Cache JSON decode error for key '{key}': {je}")
+                print(f"Cached value type: {type(cached)}, value: {cached[:100] if len(str(cached)) > 100 else cached}")
+                return None
+        
+        # If it's already a dict/list, return as-is
+        return cached
     except Exception as e:
         print(f"Cache get error for key '{key}': {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -83,11 +96,18 @@ async def set_cached(key: str, value: Any, ttl: int = 300) -> bool:
         return False
     
     try:
-        serialized = json.dumps(value)
-        redis_client.setex(key, ttl, serialized)
+        # Serialize to JSON string
+        serialized = json.dumps(value, default=str)
+        
+        # Use set() with ex parameter for Upstash SDK
+        result = redis_client.set(key, serialized, ex=ttl)
+        
+        print(f"✅ Cache set successful for key '{key}' (TTL: {ttl}s)")
         return True
     except Exception as e:
-        print(f"Cache set error for key '{key}': {e}")
+        print(f"❌ Cache set error for key '{key}': {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
