@@ -286,8 +286,8 @@ async def get_dashboard(event: str = Query("foosball", description="Filter by ev
         "events": events
     }
     
-    # Cache the result for 2 minutes (120 seconds) - shorter TTL for dashboard freshness
-    await set_cached(cache_key, dashboard_data, ttl=120)
+    # Cache the result with no expiration - will be invalidated on match/announcement updates
+    await set_cached(cache_key, dashboard_data)
     
     return dashboard_data
 

@@ -80,14 +80,14 @@ async def get_cached(key: str) -> Optional[Any]:
         return None
 
 
-async def set_cached(key: str, value: Any, ttl: int = 300) -> bool:
+async def set_cached(key: str, value: Any, ttl: Optional[int] = None) -> bool:
     """
-    Set cached value with TTL (time to live).
+    Set cached value with optional TTL (time to live).
     
     Args:
         key: Cache key
         value: Value to cache (will be serialized to JSON)
-        ttl: Time to live in seconds (default: 300 = 5 minutes)
+        ttl: Time to live in seconds (default: None = no expiration, cache persists until manually invalidated)
         
     Returns:
         True if successful, False otherwise
@@ -99,10 +99,14 @@ async def set_cached(key: str, value: Any, ttl: int = 300) -> bool:
         # Serialize to JSON string
         serialized = json.dumps(value, default=str)
         
-        # Use set() with ex parameter for Upstash SDK
-        result = redis_client.set(key, serialized, ex=ttl)
+        # Use set() with ex parameter for Upstash SDK if TTL is provided
+        if ttl is not None:
+            result = redis_client.set(key, serialized, ex=ttl)
+            print(f"✅ Cache set successful for key '{key}' (TTL: {ttl}s)")
+        else:
+            result = redis_client.set(key, serialized)
+            print(f"✅ Cache set successful for key '{key}' (no expiration - persists until invalidated)")
         
-        print(f"✅ Cache set successful for key '{key}' (TTL: {ttl}s)")
         return True
     except Exception as e:
         print(f"❌ Cache set error for key '{key}': {e}")

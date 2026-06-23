@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from pydantic import BaseModel
+from backend.cache import invalidate_dashboard_cache
 import json
 import os
 
@@ -30,7 +31,7 @@ def get_events():
 
 
 @router.put("/")
-def update_events(events: List[Event]):
+async def update_events(events: List[Event]):
     """Update all upcoming events (admin only)"""
     try:
         # Convert Pydantic models to dictionaries
@@ -39,6 +40,10 @@ def update_events(events: List[Event]):
         # Write to JSON file
         with open(EVENTS_FILE, 'w') as f:
             json.dump(events_data, f, indent=2)
+        
+        # Invalidate dashboard cache after updating events
+        print(f"🗑️  Invalidating dashboard cache after events update")
+        await invalidate_dashboard_cache()
         
         return {"message": "Events updated successfully", "count": len(events_data)}
     except Exception as e:

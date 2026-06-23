@@ -5,6 +5,7 @@ from backend.database import get_database
 from backend.models.subteam import SubTeam, SubTeamCreate, SubTeamInDB
 from backend.models.player import TeamName
 from backend.models.enums import Pool
+from backend.cache import invalidate_points_table_cache, invalidate_dashboard_cache
 import logging
 import time
 
@@ -53,7 +54,7 @@ def subteam_helper(subteam, db=None, players_by_id: Optional[Dict[str, dict]] = 
 
 
 @router.post("/", response_model=SubTeam, status_code=status.HTTP_201_CREATED)
-def create_subteam(subteam: SubTeamCreate):
+async def create_subteam(subteam: SubTeamCreate):
     """Create a new subteam"""
     db = get_database()
     
@@ -110,6 +111,11 @@ def create_subteam(subteam: SubTeamCreate):
     
     result = db.subteams.insert_one(subteam_dict)
     subteam_dict["_id"] = str(result.inserted_id)
+    
+    # Invalidate caches after creating a subteam
+    print(f"🗑️  Invalidating points table and dashboard cache after subteam creation")
+    await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return subteam_helper(subteam_dict, db)
 
@@ -214,7 +220,7 @@ def get_subteam(id: str):
 
 
 @router.put("/{id}", response_model=SubTeam)
-def update_subteam(id: str, subteam_update: SubTeamCreate):
+async def update_subteam(id: str, subteam_update: SubTeamCreate):
     """Update a subteam by ID"""
     db = get_database()
     
@@ -285,11 +291,17 @@ def update_subteam(id: str, subteam_update: SubTeamCreate):
     
     # Get updated subteam
     updated_subteam = db.subteams.find_one({"_id": ObjectId(id)})
+    
+    # Invalidate caches after updating a subteam
+    print(f"🗑️  Invalidating points table and dashboard cache after subteam update")
+    await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
+    
     return subteam_helper(updated_subteam, db)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_subteam(id: str):
+async def delete_subteam(id: str):
     """Delete a subteam by ID"""
     db = get_database()
     
@@ -307,6 +319,11 @@ def delete_subteam(id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="SubTeam not found"
         )
+    
+    # Invalidate caches after deleting a subteam
+    print(f"🗑️  Invalidating points table and dashboard cache after subteam deletion")
+    await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return None
 
