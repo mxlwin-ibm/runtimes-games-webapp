@@ -35,6 +35,8 @@ class MatchUpdate(BaseModel):
     team1_score: int = Field(default=0, ge=0, description="Score for team 1")
     team2_score: int = Field(default=0, ge=0, description="Score for team 2")
     match_status: MatchStatus = Field(default=MatchStatus.PLAYED, description="Match status")
+    match_date: Optional[str] = Field(None, description="Match date in YYYY-MM-DD format")
+    match_time: Optional[str] = Field(None, description="Match time in HH:MM format (24-hour)")
 
 
 class Match(BaseModel):

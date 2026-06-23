@@ -199,12 +199,18 @@ async def update_match(id: str, match_update: MatchUpdate):
     team1_score = int(match_update.team1_score)
     team2_score = int(match_update.team2_score)
     
-    # Update match with scores and status (preserve existing date/time)
+    # Update match with scores and status
     update_data = {
         "team1_score": team1_score,
         "team2_score": team2_score,
         "match_status": match_update.match_status.value
     }
+    
+    # Update date/time if provided
+    if match_update.match_date is not None:
+        update_data["match_date"] = match_update.match_date
+    if match_update.match_time is not None:
+        update_data["match_time"] = match_update.match_time
     
     db.matches.update_one(
         {"_id": ObjectId(id)},

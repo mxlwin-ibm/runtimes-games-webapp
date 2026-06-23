@@ -13,10 +13,11 @@ import {
   Accordion,
   AccordionItem,
 } from "@carbon/react";
-import { Add, Edit, ChevronDown } from "@carbon/icons-react";
+import { Add, Edit, ChevronDown, Calendar } from "@carbon/icons-react";
 import { getMatches, getSubteams } from "../services/api";
 import MatchForm from "../components/forms/MatchForm";
 import MatchUpdateForm from "../components/forms/MatchUpdateForm";
+import MatchRescheduleForm from "../components/forms/MatchRescheduleForm";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
 import { useAuth } from "../contexts/AuthContext";
@@ -41,6 +42,7 @@ const Matches = () => {
   const [loading, setLoading] = useState(true);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState("Foosball");
   const [selectedMode, setSelectedMode] = useState("League");
@@ -74,6 +76,11 @@ const Matches = () => {
   const handleUpdateClick = (match) => {
     setSelectedMatch(match);
     setUpdateModalOpen(true);
+  };
+
+  const handleRescheduleClick = (match) => {
+    setSelectedMatch(match);
+    setRescheduleModalOpen(true);
   };
 
   // Get pool for a subteam
@@ -300,20 +307,33 @@ const Matches = () => {
                 </div>
               </div>
               
-              {/* Update Button Column - Fixed width to maintain alignment */}
-              <div style={{ minWidth: "100px", width: "100px", display: "flex", justifyContent: "flex-end" }}>
+              {/* Action Buttons Column - Fixed width to maintain alignment */}
+              <div style={{ minWidth: "200px", width: "200px", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
                 {isAdmin && match.match_status === "scheduled" && (
-                  <Button
-                    kind="tertiary"
-                    size="sm"
-                    renderIcon={Edit}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUpdateClick(match);
-                    }}
-                  >
-                    Update
-                  </Button>
+                  <>
+                    <Button
+                      kind="tertiary"
+                      size="sm"
+                      renderIcon={Calendar}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRescheduleClick(match);
+                      }}
+                    >
+                      Reschedule
+                    </Button>
+                    <Button
+                      kind="tertiary"
+                      size="sm"
+                      renderIcon={Edit}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdateClick(match);
+                      }}
+                    >
+                      Update
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -553,6 +573,22 @@ const Matches = () => {
             kind: "success",
             title: "Success",
             subtitle: "Match result updated successfully",
+          });
+          fetchData();
+        }}
+        match={selectedMatch}
+      />
+      <MatchRescheduleForm
+        open={rescheduleModalOpen}
+        onClose={() => {
+          setRescheduleModalOpen(false);
+          setSelectedMatch(null);
+        }}
+        onSuccess={() => {
+          setToast({
+            kind: "success",
+            title: "Success",
+            subtitle: "Match rescheduled successfully",
           });
           fetchData();
         }}
