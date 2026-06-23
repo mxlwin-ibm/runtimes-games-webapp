@@ -36,8 +36,8 @@ async def get_announcements():
         if not isinstance(announcements, list) or not all(isinstance(item, str) for item in announcements):
             raise HTTPException(status_code=500, detail="Invalid announcements data in database")
     
-    # Cache the result for 5 minutes (300 seconds)
-    await set_cached(cache_key, announcements, ttl=300)
+    # Cache the result with no expiration - will be invalidated on updates
+    await set_cached(cache_key, announcements)
     
     return announcements
 

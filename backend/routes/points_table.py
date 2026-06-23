@@ -36,8 +36,8 @@ async def get_points_table(event: Optional[str] = Query(None, description="Filte
     print(f"❌ Cache MISS for key: {cache_key} - calculating from database")
     points_table = calculate_points_table(event)
     
-    # Cache the result for 5 minutes (300 seconds)
-    await set_cached(cache_key, points_table, ttl=300)
+    # Cache the result with no expiration - will be invalidated on match updates
+    await set_cached(cache_key, points_table)
     
     return points_table
 
