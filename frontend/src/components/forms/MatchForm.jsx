@@ -31,6 +31,46 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Pool position options for Quarter Finals
+  const quarterFinalOptions = [
+    { value: "POOL_A_1ST-0", label: "Pool A Winner" },
+    { value: "POOL_A_2ND-0", label: "Pool A Runner-up" },
+    { value: "POOL_B_1ST-0", label: "Pool B Winner" },
+    { value: "POOL_B_2ND-0", label: "Pool B Runner-up" },
+    { value: "POOL_C_1ST-0", label: "Pool C Winner" },
+    { value: "POOL_C_2ND-0", label: "Pool C Runner-up" },
+    { value: "POOL_D_1ST-0", label: "Pool D Winner" },
+    { value: "POOL_D_2ND-0", label: "Pool D Runner-up" },
+  ];
+
+  // Quarter Final winner options for Semi Finals
+  const semiFinalOptions = [
+    { value: "QF1_WINNER-0", label: "QF1 Winner" },
+    { value: "QF2_WINNER-0", label: "QF2 Winner" },
+    { value: "QF3_WINNER-0", label: "QF3 Winner" },
+    { value: "QF4_WINNER-0", label: "QF4 Winner" },
+  ];
+
+  // Semi Final winner options for Finals
+  const finalOptions = [
+    { value: "SF1_WINNER-0", label: "SF1 Winner" },
+    { value: "SF2_WINNER-0", label: "SF2 Winner" },
+  ];
+
+  // Get appropriate placeholder options based on match type
+  const getPlaceholderOptions = () => {
+    if (formData.match_type === "quarter_final") {
+      return quarterFinalOptions;
+    } else if (formData.match_type === "semi_final") {
+      return semiFinalOptions;
+    } else if (formData.match_type === "final") {
+      return finalOptions;
+    }
+    return [];
+  };
+
+  const poolPositionOptions = getPlaceholderOptions();
+
   useEffect(() => {
     if (open) {
       fetchSubteams();
@@ -128,7 +168,8 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
   };
 
   const handleSubmit = async () => {
-    if (formData.team1 === formData.team2 && formData.team1_subid === formData.team2_subid) {
+    // Check if teams are the same (skip for pool positions with subid "0")
+    if (formData.team1 === formData.team2 && formData.team1_subid === formData.team2_subid && formData.team1_subid !== "0") {
       setError("Subteams cannot be the same");
       return;
     }
@@ -183,9 +224,16 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
     ? subteams.filter((subteam) => subteam.pool === formData.pool)
     : subteams;
   
-  // Filter Subteam 2 to exclude Subteam 1
+  // Filter Subteam 2 to exclude Subteam 1 (only for actual teams, not pool positions)
   const filteredSubteamsFor2 = filteredSubteams.filter(
-    (subteam) => !(subteam.team === formData.team1 && subteam.subteam_id.toString() === formData.team1_subid)
+    (subteam) => {
+      // Don't filter if team1 is a pool position placeholder
+      if (formData.team1.startsWith("POOL_") && formData.team1_subid === "0") {
+        return true;
+      }
+      // Filter out the selected team1
+      return !(subteam.team === formData.team1 && subteam.subteam_id.toString() === formData.team1_subid);
+    }
   );
 
   return (
@@ -248,6 +296,14 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         style={{ marginBottom: "1rem" }}
       >
         <SelectItem value="" text="Select Team 1" />
+        {mode === "Playoffs" && (
+          <>
+            {poolPositionOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value} text={option.label} />
+            ))}
+            <SelectItem value="" text="──────────────" disabled />
+          </>
+        )}
         {filteredSubteams.map((subteam) => {
           const value = `${subteam.team}-${subteam.subteam_id}`;
           const playerNames = Array.isArray(subteam.player_names)
@@ -268,6 +324,14 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         style={{ marginBottom: "1rem" }}
       >
         <SelectItem value="" text="Select Team 2" />
+        {mode === "Playoffs" && (
+          <>
+            {poolPositionOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value} text={option.label} />
+            ))}
+            <SelectItem value="" text="──────────────" disabled />
+          </>
+        )}
         {filteredSubteamsFor2.map((subteam) => {
           const value = `${subteam.team}-${subteam.subteam_id}`;
           const playerNames = Array.isArray(subteam.player_names)
