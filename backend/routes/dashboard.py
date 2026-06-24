@@ -130,20 +130,41 @@ def get_recent_results(db, event: str = "foosball", limit: int = 5) -> List[Dict
 
 
 def get_mvp(db, event: str = "foosball") -> Optional[Dict[str, Any]]:
-    """Get MVP (subteam with most points)"""
-    standings = calculate_points_table(event)
+    """Get MVP (subteam with most points and goals from database)"""
+    # Query subteams directly, sorted by points (desc), then goals for (desc)
+    mvp_subteam = db.subteams.find_one(
+        {"event": event},
+        sort=[("points", -1), ("gf", -1)]
+    )
     
-    if standings:
-        mvp = standings[0]  # First in standings
-        return {
-            "team": mvp.get("team_name"),
-            "subteam_id": mvp.get("subteam_id"),
-            "points": mvp.get("points"),
-            "played": mvp.get("played"),
-            "win": mvp.get("win"),
-            "gd": mvp.get("gd")
-        }
-    return None
+    if not mvp_subteam:
+        return None
+    
+    # Get player names
+    player_ids = mvp_subteam.get("player_ids", [])
+    player_names = []
+    if player_ids:
+        from bson import ObjectId
+        valid_ids = [ObjectId(pid) for pid in player_ids if ObjectId.is_valid(str(pid))]
+        if valid_ids:
+            players = list(db.players.find({"_id": {"$in": valid_ids}}))
+            player_names = [p.get("player_name", "Unknown") for p in players]
+    
+    team = mvp_subteam.get("team", "Unknown")
+    subteam_id = mvp_subteam.get("subteam_id", 0)
+    
+    return {
+        "team_name": f"{team}-{subteam_id}",
+        "team_id": ", ".join(player_names) if player_names else "No players",
+        "pool": mvp_subteam.get("pool", "A"),
+        "points": mvp_subteam.get("points", 0),
+        "played": mvp_subteam.get("played", 0),
+        "won": mvp_subteam.get("win", 0),
+        "lost": mvp_subteam.get("loss", 0),
+        "gf": mvp_subteam.get("gf", 0),
+        "ga": mvp_subteam.get("ga", 0),
+        "gd": mvp_subteam.get("gd", 0)
+    }
 
 
 def get_announcements_data(db) -> List[str]:
@@ -258,21 +279,39 @@ async def get_dashboard(event: str = Query("foosball", description="Filter by ev
     # Compute standings once
     standings = calculate_points_table(event)
     
-    # Derive MVP from standings (first place)
+    # Get MVP directly from subteams collection (sorted by points, then goals)
     mvp = None
-    if standings:
-        top_team = standings[0]
+    mvp_subteam = await async_db.subteams.find_one(
+        {"event": event},
+        sort=[("points", -1), ("gf", -1)]
+    )
+    
+    if mvp_subteam:
+        # Get player names
+        player_ids = mvp_subteam.get("player_ids", [])
+        player_names = []
+        if player_ids:
+            from bson import ObjectId
+            valid_ids = [ObjectId(pid) for pid in player_ids if ObjectId.is_valid(str(pid))]
+            if valid_ids:
+                players_cursor = async_db.players.find({"_id": {"$in": valid_ids}})
+                players = await players_cursor.to_list(length=None)
+                player_names = [p.get("player_name", "Unknown") for p in players]
+        
+        team = mvp_subteam.get("team", "Unknown")
+        subteam_id = mvp_subteam.get("subteam_id", 0)
+        
         mvp = {
-            "team_name": top_team.get("team_name"),
-            "team_id": top_team.get("team_id"),  # Player names
-            "pool": top_team.get("pool"),
-            "points": top_team.get("points"),
-            "played": top_team.get("played"),
-            "won": top_team.get("won"),
-            "lost": top_team.get("lost"),
-            "gf": top_team.get("gf"),  # Goals for
-            "ga": top_team.get("ga"),  # Goals against
-            "gd": top_team.get("gd")   # Goal difference
+            "team_name": f"{team}-{subteam_id}",
+            "team_id": ", ".join(player_names) if player_names else "No players",
+            "pool": mvp_subteam.get("pool", "A"),
+            "points": mvp_subteam.get("points", 0),
+            "played": mvp_subteam.get("played", 0),
+            "won": mvp_subteam.get("win", 0),
+            "lost": mvp_subteam.get("loss", 0),
+            "gf": mvp_subteam.get("gf", 0),
+            "ga": mvp_subteam.get("ga", 0),
+            "gd": mvp_subteam.get("gd", 0)
         }
     
     dashboard_data = {
