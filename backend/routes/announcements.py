@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from backend.database import get_database
-from backend.cache import get_cached, set_cached, invalidate_announcements_cache, announcements_cache_key
+from backend.cache import get_cached, set_cached, invalidate_announcements_cache, invalidate_dashboard_cache, announcements_cache_key
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 
@@ -59,9 +59,10 @@ async def update_announcements(announcements: List[str]):
             upsert=True
         )
         
-        # Invalidate cache after update
-        print(f"🗑️  Invalidating announcements cache")
+        # Invalidate both announcements and dashboard cache after update
+        print(f"🗑️  Invalidating announcements and dashboard cache")
         await invalidate_announcements_cache()
+        await invalidate_dashboard_cache()
         
         return {"message": "Announcements updated successfully", "count": len(sanitized_announcements)}
     except Exception as e:

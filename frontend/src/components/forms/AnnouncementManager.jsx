@@ -52,6 +52,9 @@ const AnnouncementManager = ({ open, onClose }) => {
       
       await updateAnnouncements(announcements);
       
+      // Refetch announcements to get the updated data from backend
+      await fetchAnnouncements();
+      
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
