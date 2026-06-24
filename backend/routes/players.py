@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException, status, Query
 from backend.models.player import PlayerCreate, Player, TeamName
 from backend.database import get_database
+from backend.cache import (
+    invalidate_players_cache,
+    get_cached,
+    set_cached,
+    players_cache_key
+)
 from bson import ObjectId
 from typing import List, Optional
 
@@ -17,7 +23,7 @@ def player_helper(player) -> dict:
 
 
 @router.post("/", response_model=Player, status_code=status.HTTP_201_CREATED)
-def create_player(player: PlayerCreate):
+async def create_player(player: PlayerCreate):
     """Create a new player"""
     db = get_database()
     
@@ -38,12 +44,30 @@ def create_player(player: PlayerCreate):
     result = db.players.insert_one(player_dict)
     player_dict["_id"] = str(result.inserted_id)
     
+    # Invalidate players cache after creating a player
+    print(f"🗑️  Invalidating players cache after player creation")
+    await invalidate_players_cache()
+    
     return player_dict
 
 
 @router.get("/", response_model=List[Player])
-def get_players(team: Optional[str] = Query(None, description="Filter by team name")):
-    """Get all players, optionally filtered by team"""
+async def get_players(team: Optional[str] = Query(None, description="Filter by team name")):
+    """
+    Get all players, optionally filtered by team.
+    Uses Redis caching for performance.
+    """
+    # Try to get from cache
+    cache_key = players_cache_key(team)
+    print(f"🔍 Looking up cache key: {cache_key}")
+    cached_data = await get_cached(cache_key)
+    
+    if cached_data is not None:
+        print(f"✅ Cache HIT for key: {cache_key}")
+        return cached_data
+    
+    # Fetch from database if not in cache
+    print(f"❌ Cache MISS for key: {cache_key} - fetching from database")
     db = get_database()
     
     # Build query filter
@@ -62,6 +86,9 @@ def get_players(team: Optional[str] = Query(None, description="Filter by team na
     players = []
     for player in db.players.find(query):
         players.append(player_helper(player))
+    
+    # Cache the result
+    await set_cached(cache_key, players)
     
     return players
 
@@ -90,7 +117,7 @@ def get_player(id: str):
 
 
 @router.put("/{id}", response_model=Player)
-def update_player(id: str, player_update: PlayerCreate):
+async def update_player(id: str, player_update: PlayerCreate):
     """Update a player by ID"""
     db = get_database()
     
@@ -134,11 +161,16 @@ def update_player(id: str, player_update: PlayerCreate):
     
     # Get updated player
     updated_player = db.players.find_one({"_id": ObjectId(id)})
+    
+    # Invalidate players cache after updating a player
+    print(f"🗑️  Invalidating players cache after player update")
+    await invalidate_players_cache()
+    
     return player_helper(updated_player)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_player(id: str):
+async def delete_player(id: str):
     """Delete a player by ID"""
     db = get_database()
     
@@ -156,6 +188,10 @@ def delete_player(id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player with id '{id}' not found"
         )
+    
+    # Invalidate players cache after deleting a player
+    print(f"🗑️  Invalidating players cache after player deletion")
+    await invalidate_players_cache()
     
     return None
 

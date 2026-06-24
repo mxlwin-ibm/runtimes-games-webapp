@@ -191,3 +191,29 @@ def dashboard_cache_key(event: str = "foosball") -> str:
 async def invalidate_dashboard_cache():
     """Invalidate all dashboard cache entries."""
     await delete_pattern("dashboard:*")
+
+
+async def invalidate_matches_cache():
+    """Invalidate all matches cache entries."""
+    await delete_pattern("matches:*")
+
+
+async def invalidate_players_cache():
+    """Invalidate all players cache entries."""
+    await delete_pattern("players:*")
+
+
+# Additional cache key generators
+def matches_cache_key(event: Optional[str] = None, status: Optional[str] = None) -> str:
+    """Generate cache key for matches."""
+    parts = ["matches"]
+    if event:
+        parts.append(f"event:{event}")
+    if status:
+        parts.append(f"status:{status}")
+    return ":".join(parts) if len(parts) > 1 else "matches:all"
+
+
+def players_cache_key(team: Optional[str] = None) -> str:
+    """Generate cache key for players."""
+    return f"players:{team}" if team else "players:all"

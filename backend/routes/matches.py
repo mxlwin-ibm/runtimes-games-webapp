@@ -1,7 +1,14 @@
 from fastapi import APIRouter, HTTPException, status
 from backend.models.match import MatchCreate, MatchUpdate, Match, MatchStatus
 from backend.database import get_database
-from backend.cache import invalidate_points_table_cache, invalidate_dashboard_cache
+from backend.cache import (
+    invalidate_points_table_cache,
+    invalidate_dashboard_cache,
+    invalidate_matches_cache,
+    get_cached,
+    set_cached,
+    matches_cache_key
+)
 from bson import ObjectId
 from typing import List
 
@@ -128,7 +135,8 @@ async def create_match(match: MatchCreate):
     match_dict["_id"] = str(result.inserted_id)
     
     # Invalidate caches after creating a match
-    print(f"🗑️  Invalidating points table and dashboard cache after match creation")
+    print(f"🗑️  Invalidating matches, points table and dashboard cache after match creation")
+    await invalidate_matches_cache()
     await invalidate_points_table_cache()
     await invalidate_dashboard_cache()
     
@@ -136,13 +144,30 @@ async def create_match(match: MatchCreate):
 
 
 @router.get("/", response_model=List[Match])
-def get_matches():
-    """Get all matches"""
+async def get_matches():
+    """
+    Get all matches.
+    Uses Redis caching for performance.
+    """
+    # Try to get from cache
+    cache_key = matches_cache_key()
+    print(f"🔍 Looking up cache key: {cache_key}")
+    cached_data = await get_cached(cache_key)
+    
+    if cached_data is not None:
+        print(f"✅ Cache HIT for key: {cache_key}")
+        return cached_data
+    
+    # Fetch from database if not in cache
+    print(f"❌ Cache MISS for key: {cache_key} - fetching from database")
     db = get_database()
     matches = []
     
     for match in db.matches.find():
         matches.append(match_helper(match))
+    
+    # Cache the result
+    await set_cached(cache_key, matches)
     
     return matches
 
@@ -282,7 +307,8 @@ async def update_match(id: str, match_update: MatchUpdate):
     updated_match = db.matches.find_one({"_id": ObjectId(id)})
     
     # Invalidate caches after updating a match
-    print(f"🗑️  Invalidating points table and dashboard cache after match update")
+    print(f"🗑️  Invalidating matches, points table and dashboard cache after match update")
+    await invalidate_matches_cache()
     await invalidate_points_table_cache()
     await invalidate_dashboard_cache()
     
@@ -311,7 +337,8 @@ async def delete_match(id: str):
         )
     
     # Invalidate caches after deleting a match
-    print(f"🗑️  Invalidating points table and dashboard cache after match deletion")
+    print(f"🗑️  Invalidating matches, points table and dashboard cache after match deletion")
+    await invalidate_matches_cache()
     await invalidate_points_table_cache()
     await invalidate_dashboard_cache()
     
