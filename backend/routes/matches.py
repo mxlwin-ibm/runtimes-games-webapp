@@ -1,7 +1,14 @@
 from fastapi import APIRouter, HTTPException, status
 from backend.models.match import MatchCreate, MatchUpdate, Match, MatchStatus
 from backend.database import get_database
-from backend.cache import invalidate_points_table_cache, invalidate_dashboard_cache
+from backend.cache import (
+    invalidate_points_table_cache,
+    invalidate_dashboard_cache,
+    invalidate_matches_cache,
+    get_cached,
+    set_cached,
+    matches_cache_key
+)
 from bson import ObjectId
 from typing import List
 
@@ -33,55 +40,72 @@ async def create_match(match: MatchCreate):
     """Create a new match"""
     db = get_database()
     
-    # Route-level validation: subteams must be different
-    if match.team1 == match.team2 and match.team1_subid == match.team2_subid:
+    # Check if using pool position placeholders (for playoff matches)
+    # Supports: POOL_A_1ST, QF1_WINNER, SF1_WINNER, etc.
+    is_team1_placeholder = (
+        (match.team1.startswith("POOL_") or match.team1.startswith("QF") or match.team1.startswith("SF"))
+        and match.team1_subid == "0"
+    )
+    is_team2_placeholder = (
+        (match.team2.startswith("POOL_") or match.team2.startswith("QF") or match.team2.startswith("SF"))
+        and match.team2_subid == "0"
+    )
+    
+    # Route-level validation: subteams must be different (skip for pool positions)
+    if match.team1 == match.team2 and match.team1_subid == match.team2_subid and not (is_team1_placeholder or is_team2_placeholder):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A subteam cannot play against itself"
         )
     
-    try:
-        team1_subid = int(match.team1_subid)
-        team2_subid = int(match.team2_subid)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="team1_subid and team2_subid must be valid integers"
-        )
-    
-    # For league matches, verify subteams exist and are in same pool
-    # For playoff matches, skip pool validation
-    if match.match_type.value == "league":
-        # Verify both subteams exist and get their details
-        team1_doc = db.subteams.find_one({
-            "event": match.event,
-            "team": match.team1,
-            "subteam_id": team1_subid
-        })
-        team2_doc = db.subteams.find_one({
-            "event": match.event,
-            "team": match.team2,
-            "subteam_id": team2_subid
-        })
-        
-        if not team1_doc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SubTeam '{match.team1}-{match.team1_subid}' not found for event '{match.event}'"
-            )
-        
-        if not team2_doc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"SubTeam '{match.team2}-{match.team2_subid}' not found for event '{match.event}'"
-            )
-        
-        # Verify both subteams are in the same pool
-        if team1_doc["pool"] != team2_doc["pool"]:
+    # For playoff matches with pool position placeholders, skip all validation
+    if is_team1_placeholder or is_team2_placeholder:
+        # Allow pool position placeholders for playoff matches
+        pass
+    else:
+        # Convert subteam IDs to integers for actual teams
+        try:
+            team1_subid = int(match.team1_subid)
+            team2_subid = int(match.team2_subid)
+        except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"SubTeams must be in the same pool. {match.team1}-{match.team1_subid} is in Pool {team1_doc['pool']}, {match.team2}-{match.team2_subid} is in Pool {team2_doc['pool']}"
+                detail="team1_subid and team2_subid must be valid integers"
             )
+        
+        # For league matches, verify subteams exist and are in same pool
+        # For playoff matches with actual teams, verify subteams exist
+        if match.match_type.value == "league":
+            # Verify both subteams exist and get their details
+            team1_doc = db.subteams.find_one({
+                "event": match.event,
+                "team": match.team1,
+                "subteam_id": team1_subid
+            })
+            team2_doc = db.subteams.find_one({
+                "event": match.event,
+                "team": match.team2,
+                "subteam_id": team2_subid
+            })
+            
+            if not team1_doc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"SubTeam '{match.team1}-{match.team1_subid}' not found for event '{match.event}'"
+                )
+            
+            if not team2_doc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"SubTeam '{match.team2}-{match.team2_subid}' not found for event '{match.event}'"
+                )
+            
+            # Verify both subteams are in the same pool
+            if team1_doc["pool"] != team2_doc["pool"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"SubTeams must be in the same pool. {match.team1}-{match.team1_subid} is in Pool {team1_doc['pool']}, {match.team2}-{match.team2_subid} is in Pool {team2_doc['pool']}"
+                )
     
     # Check for duplicate matches (both directions) - include event in the check
     existing_match = db.matches.find_one({
@@ -128,7 +152,8 @@ async def create_match(match: MatchCreate):
     match_dict["_id"] = str(result.inserted_id)
     
     # Invalidate caches after creating a match
-    print(f"🗑️  Invalidating points table and dashboard cache after match creation")
+    print(f"🗑️  Invalidating matches, points table and dashboard cache after match creation")
+    await invalidate_matches_cache()
     await invalidate_points_table_cache()
     await invalidate_dashboard_cache()
     
@@ -136,13 +161,30 @@ async def create_match(match: MatchCreate):
 
 
 @router.get("/", response_model=List[Match])
-def get_matches():
-    """Get all matches"""
+async def get_matches():
+    """
+    Get all matches.
+    Uses Redis caching for performance.
+    """
+    # Try to get from cache
+    cache_key = matches_cache_key()
+    print(f"🔍 Looking up cache key: {cache_key}")
+    cached_data = await get_cached(cache_key)
+    
+    if cached_data is not None:
+        print(f"✅ Cache HIT for key: {cache_key}")
+        return cached_data
+    
+    # Fetch from database if not in cache
+    print(f"❌ Cache MISS for key: {cache_key} - fetching from database")
     db = get_database()
     matches = []
     
     for match in db.matches.find():
         matches.append(match_helper(match))
+    
+    # Cache the result
+    await set_cached(cache_key, matches)
     
     return matches
 
@@ -193,11 +235,21 @@ async def update_match(id: str, match_update: MatchUpdate):
     
     # Get team identifiers and scores
     team1 = existing_match["team1"]
-    team1_subid = int(existing_match["team1_subid"])
+    team1_subid_str = str(existing_match["team1_subid"])
     team2 = existing_match["team2"]
-    team2_subid = int(existing_match["team2_subid"])
+    team2_subid_str = str(existing_match["team2_subid"])
     team1_score = int(match_update.team1_score)
     team2_score = int(match_update.team2_score)
+    
+    # Check if using pool position placeholders (POOL_, QF, SF)
+    is_team1_placeholder = (
+        (team1.startswith("POOL_") or team1.startswith("QF") or team1.startswith("SF"))
+        and team1_subid_str == "0"
+    )
+    is_team2_placeholder = (
+        (team2.startswith("POOL_") or team2.startswith("QF") or team2.startswith("SF"))
+        and team2_subid_str == "0"
+    )
     
     # Update match with scores and status
     update_data = {
@@ -217,10 +269,14 @@ async def update_match(id: str, match_update: MatchUpdate):
         {"$set": update_data}
     )
     
-    # Update subteam statistics ONLY if match status is PLAYED
-    if match_update.match_status == MatchStatus.PLAYED:
+    # Update subteam statistics ONLY if match status is PLAYED and NOT using pool position placeholders
+    if match_update.match_status == MatchStatus.PLAYED and not (is_team1_placeholder or is_team2_placeholder):
         # Get event from existing match
         event = existing_match.get("event", "foosball")
+        
+        # Convert subids to integers for actual teams
+        team1_subid = int(team1_subid_str)
+        team2_subid = int(team2_subid_str)
         
         # Update SubTeam 1 statistics
         team1_doc = db.subteams.find_one({
@@ -282,7 +338,110 @@ async def update_match(id: str, match_update: MatchUpdate):
     updated_match = db.matches.find_one({"_id": ObjectId(id)})
     
     # Invalidate caches after updating a match
-    print(f"🗑️  Invalidating points table and dashboard cache after match update")
+    print(f"🗑️  Invalidating matches, points table and dashboard cache after match update")
+    await invalidate_matches_cache()
+    await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
+    
+    return match_helper(updated_match)
+
+
+@router.patch("/{id}/resolve", response_model=Match)
+async def resolve_playoff_match(id: str, team1: str, team1_subid: str, team2: str, team2_subid: str):
+    """Resolve a playoff match by replacing pool position placeholders with actual teams"""
+    db = get_database()
+    
+    # Validate ObjectId format
+    if not ObjectId.is_valid(id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid ObjectId format: '{id}'"
+        )
+    
+    # Find the match
+    existing_match = db.matches.find_one({"_id": ObjectId(id)})
+    if not existing_match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Match with id '{id}' not found"
+        )
+    
+    # Verify it's a playoff match with placeholders
+    current_team1 = existing_match.get("team1", "")
+    current_team1_subid = str(existing_match.get("team1_subid", ""))
+    current_team2 = existing_match.get("team2", "")
+    current_team2_subid = str(existing_match.get("team2_subid", ""))
+    
+    is_placeholder = (
+        ((current_team1.startswith("POOL_") or current_team1.startswith("QF") or current_team1.startswith("SF")) and current_team1_subid == "0") or
+        ((current_team2.startswith("POOL_") or current_team2.startswith("QF") or current_team2.startswith("SF")) and current_team2_subid == "0")
+    )
+    
+    if not is_placeholder:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This match does not have pool position placeholders to resolve"
+        )
+    
+    # Validate new teams are different
+    if team1 == team2 and team1_subid == team2_subid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A subteam cannot play against itself"
+        )
+    
+    # Convert subteam IDs to integers
+    try:
+        team1_subid_int = int(team1_subid)
+        team2_subid_int = int(team2_subid)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="team1_subid and team2_subid must be valid integers"
+        )
+    
+    # Verify both subteams exist
+    event = existing_match.get("event", "foosball")
+    team1_doc = db.subteams.find_one({
+        "event": event,
+        "team": team1,
+        "subteam_id": team1_subid_int
+    })
+    team2_doc = db.subteams.find_one({
+        "event": event,
+        "team": team2,
+        "subteam_id": team2_subid_int
+    })
+    
+    if not team1_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"SubTeam '{team1}-{team1_subid}' not found for event '{event}'"
+        )
+    
+    if not team2_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"SubTeam '{team2}-{team2_subid}' not found for event '{event}'"
+        )
+    
+    # Update match with actual teams
+    db.matches.update_one(
+        {"_id": ObjectId(id)},
+        {"$set": {
+            "team1": team1,
+            "team1_subid": team1_subid,
+            "team2": team2,
+            "team2_subid": team2_subid
+        }}
+    )
+    
+    # Get updated match
+    updated_match = db.matches.find_one({"_id": ObjectId(id)})
+    
+    # Invalidate caches
+    print(f"🗑️  Invalidating matches, points table and dashboard cache after resolving match")
+    await invalidate_matches_cache()
     await invalidate_points_table_cache()
     await invalidate_dashboard_cache()
     
@@ -311,7 +470,8 @@ async def delete_match(id: str):
         )
     
     # Invalidate caches after deleting a match
-    print(f"🗑️  Invalidating points table and dashboard cache after match deletion")
+    print(f"🗑️  Invalidating matches, points table and dashboard cache after match deletion")
+    await invalidate_matches_cache()
     await invalidate_points_table_cache()
     await invalidate_dashboard_cache()
     

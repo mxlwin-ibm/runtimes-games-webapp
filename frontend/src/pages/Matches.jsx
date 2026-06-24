@@ -13,11 +13,12 @@ import {
   Accordion,
   AccordionItem,
 } from "@carbon/react";
-import { Add, Edit, ChevronDown, Calendar } from "@carbon/icons-react";
+import { Add, Edit, ChevronDown, Calendar, CheckmarkFilled } from "@carbon/icons-react";
 import { getMatches, getSubteams } from "../services/api";
 import MatchForm from "../components/forms/MatchForm";
 import MatchUpdateForm from "../components/forms/MatchUpdateForm";
 import MatchRescheduleForm from "../components/forms/MatchRescheduleForm";
+import ResolveMatchForm from "../components/forms/ResolveMatchForm";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
 import { useAuth } from "../contexts/AuthContext";
@@ -43,6 +44,7 @@ const Matches = () => {
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState("Foosball");
   const [selectedMode, setSelectedMode] = useState("League");
@@ -81,6 +83,19 @@ const Matches = () => {
   const handleRescheduleClick = (match) => {
     setSelectedMatch(match);
     setRescheduleModalOpen(true);
+  };
+
+  const handleResolveClick = (match) => {
+    setSelectedMatch(match);
+    setResolveModalOpen(true);
+  };
+
+  // Check if a match has placeholders (pool positions, QF winners, or SF winners)
+  const isPlaceholderMatch = (match) => {
+    return (
+      ((match.team1.startsWith("POOL_") || match.team1.startsWith("QF") || match.team1.startsWith("SF")) && match.team1_subid === "0") ||
+      ((match.team2.startsWith("POOL_") || match.team2.startsWith("QF") || match.team2.startsWith("SF")) && match.team2_subid === "0")
+    );
   };
 
   // Get pool for a subteam
@@ -193,6 +208,29 @@ const Matches = () => {
   const sortedRounds = Object.keys(matchesByRound).sort((a, b) => Number(a) - Number(b));
 
   const formatTeamDisplay = (teamName, subteamId) => {
+    // Check if it's a placeholder (pool position, QF winner, or SF winner)
+    if (subteamId === "0") {
+      const placeholderMap = {
+        // Pool positions
+        "POOL_A_1ST": "Pool A Winner",
+        "POOL_A_2ND": "Pool A Runner-up",
+        "POOL_B_1ST": "Pool B Winner",
+        "POOL_B_2ND": "Pool B Runner-up",
+        "POOL_C_1ST": "Pool C Winner",
+        "POOL_C_2ND": "Pool C Runner-up",
+        "POOL_D_1ST": "Pool D Winner",
+        "POOL_D_2ND": "Pool D Runner-up",
+        // Quarter Final winners
+        "QF1_WINNER": "QF1 Winner",
+        "QF2_WINNER": "QF2 Winner",
+        "QF3_WINNER": "QF3 Winner",
+        "QF4_WINNER": "QF4 Winner",
+        // Semi Final winners
+        "SF1_WINNER": "SF1 Winner",
+        "SF2_WINNER": "SF2 Winner",
+      };
+      return placeholderMap[teamName] || teamName;
+    }
     return `${teamName}-${subteamId}`;
   };
 
@@ -308,31 +346,47 @@ const Matches = () => {
               </div>
               
               {/* Action Buttons Column - Fixed width to maintain alignment */}
-              <div style={{ minWidth: "200px", width: "200px", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+              <div style={{ minWidth: "250px", width: "250px", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
                 {isAdmin && match.match_status === "scheduled" && (
                   <>
-                    <Button
-                      kind="tertiary"
-                      size="sm"
-                      renderIcon={Calendar}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRescheduleClick(match);
-                      }}
-                    >
-                      Reschedule
-                    </Button>
-                    <Button
-                      kind="tertiary"
-                      size="sm"
-                      renderIcon={Edit}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleUpdateClick(match);
-                      }}
-                    >
-                      Update
-                    </Button>
+                    {isPlaceholderMatch(match) ? (
+                      <Button
+                        kind="primary"
+                        size="sm"
+                        renderIcon={CheckmarkFilled}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleResolveClick(match);
+                        }}
+                      >
+                        Resolve Teams
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          kind="tertiary"
+                          size="sm"
+                          renderIcon={Calendar}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRescheduleClick(match);
+                          }}
+                        >
+                          Reschedule
+                        </Button>
+                        <Button
+                          kind="tertiary"
+                          size="sm"
+                          renderIcon={Edit}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUpdateClick(match);
+                          }}
+                        >
+                          Update
+                        </Button>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -504,8 +558,19 @@ const Matches = () => {
                 Quarter Finals
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {matchesByPlayoffStage.quarter_final.map((match) => (
-                  <MatchRow key={match._id} match={match} />
+                {matchesByPlayoffStage.quarter_final.map((match, index) => (
+                  <div key={match._id}>
+                    <div style={{
+                      fontSize: "0.875rem",
+                      fontWeight: "600",
+                      color: "#525252",
+                      marginBottom: "0.25rem",
+                      paddingLeft: "0.5rem"
+                    }}>
+                      QF{index + 1}
+                    </div>
+                    <MatchRow match={match} />
+                  </div>
                 ))}
               </div>
             </Tile>
@@ -517,8 +582,19 @@ const Matches = () => {
                 Semi Finals
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {matchesByPlayoffStage.semi_final.map((match) => (
-                  <MatchRow key={match._id} match={match} />
+                {matchesByPlayoffStage.semi_final.map((match, index) => (
+                  <div key={match._id}>
+                    <div style={{
+                      fontSize: "0.875rem",
+                      fontWeight: "600",
+                      color: "#525252",
+                      marginBottom: "0.25rem",
+                      paddingLeft: "0.5rem"
+                    }}>
+                      SF{index + 1}
+                    </div>
+                    <MatchRow match={match} />
+                  </div>
                 ))}
               </div>
             </Tile>
@@ -589,6 +665,22 @@ const Matches = () => {
             kind: "success",
             title: "Success",
             subtitle: "Match rescheduled successfully",
+          });
+          fetchData();
+        }}
+        match={selectedMatch}
+      />
+      <ResolveMatchForm
+        open={resolveModalOpen}
+        onClose={() => {
+          setResolveModalOpen(false);
+          setSelectedMatch(null);
+        }}
+        onSuccess={() => {
+          setToast({
+            kind: "success",
+            title: "Success",
+            subtitle: "Match resolved successfully with actual teams",
           });
           fetchData();
         }}

@@ -6,10 +6,10 @@ from backend.models.enums import MatchStatus, MatchType
 
 class MatchCreate(BaseModel):
     """Schema for scheduling a new match"""
-    team1: str = Field(..., description="First team name (e.g., 'Titans')")
-    team1_subid: str = Field(..., description="First subteam identifier (e.g., '1')")
-    team2: str = Field(..., description="Second team name (e.g., 'Vikings')")
-    team2_subid: str = Field(..., description="Second subteam identifier (e.g., '2')")
+    team1: str = Field(..., description="First team name (e.g., 'Titans') or pool position (e.g., 'POOL_A_1ST')")
+    team1_subid: str = Field(..., description="First subteam identifier (e.g., '1') or '0' for pool positions")
+    team2: str = Field(..., description="Second team name (e.g., 'Vikings') or pool position (e.g., 'POOL_B_2ND')")
+    team2_subid: str = Field(..., description="Second subteam identifier (e.g., '2') or '0' for pool positions")
     event: str = Field(default="foosball", description="Event name")
     round: int = Field(default=1, ge=1, description="Round number")
     match_type: MatchType = Field(default=MatchType.LEAGUE, description="Match type: league or playoff stage")

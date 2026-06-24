@@ -37,6 +37,8 @@ export const deleteSubteam = (id) => api.delete(`/subteams/${id}`);
 export const getMatches = () => api.get("/matches/");
 export const createMatch = (matchData) => api.post("/matches/", matchData);
 export const updateMatch = (matchId, matchData) => api.put(`/matches/${matchId}`, matchData);
+export const resolveMatch = (matchId, team1, team1_subid, team2, team2_subid) =>
+  api.patch(`/matches/${matchId}/resolve?team1=${team1}&team1_subid=${team1_subid}&team2=${team2}&team2_subid=${team2_subid}`);
 export const getTeamMatches = (teamId) => api.get(`/matches/team/${teamId}`);
 
 // Points Table API
