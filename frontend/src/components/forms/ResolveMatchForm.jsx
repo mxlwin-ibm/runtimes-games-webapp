@@ -65,9 +65,12 @@ const ResolveMatchForm = ({ open, onClose, onSuccess, match }) => {
   };
 
   const handleSubmit = async () => {
-    if (formData.team1 === formData.team2 && formData.team1_subid === formData.team2_subid) {
-      setError("Subteams cannot be the same");
-      return;
+    // Validate that both teams are different if both are selected
+    if (formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid) {
+      if (formData.team1 === formData.team2 && formData.team1_subid === formData.team2_subid) {
+        setError("Subteams cannot be the same");
+        return;
+      }
     }
 
     setError(null);
@@ -76,10 +79,10 @@ const ResolveMatchForm = ({ open, onClose, onSuccess, match }) => {
     try {
       await resolveMatch(
         match._id,
-        formData.team1,
-        formData.team1_subid,
-        formData.team2,
-        formData.team2_subid
+        formData.team1 || null,
+        formData.team1_subid || null,
+        formData.team2 || null,
+        formData.team2_subid || null
       );
       
       onSuccess();
@@ -93,7 +96,8 @@ const ResolveMatchForm = ({ open, onClose, onSuccess, match }) => {
 
   if (!match) return null;
 
-  const isValid = formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid;
+  // Allow submission if at least one team is selected
+  const isValid = (formData.team1 && formData.team1_subid) || (formData.team2 && formData.team2_subid);
   
   // Filter Subteam 2 to exclude Subteam 1
   const filteredSubteamsFor2 = subteams.filter(
@@ -154,13 +158,13 @@ const ResolveMatchForm = ({ open, onClose, onSuccess, match }) => {
           <strong>Current Match:</strong> {formatPoolPosition(match.team1, match.team1_subid)} vs {formatPoolPosition(match.team2, match.team2_subid)}
         </p>
         <p style={{ margin: "0.5rem 0 0 0", fontSize: "12px", color: "#525252" }}>
-          Select the actual qualified teams to replace the pool position placeholders.
+          Select the actual qualified teams to replace the pool position placeholders. You can resolve one or both teams.
         </p>
       </div>
 
       <Select
         id="subteam1"
-        labelText="Team 1 (Actual Team)"
+        labelText="Team 1 (Actual Team) - Optional"
         value={formData.team1 && formData.team1_subid ? `${formData.team1}-${formData.team1_subid}` : ""}
         onChange={handleSelectChange}
         style={{ marginBottom: "1rem" }}
@@ -180,10 +184,9 @@ const ResolveMatchForm = ({ open, onClose, onSuccess, match }) => {
 
       <Select
         id="subteam2"
-        labelText="Team 2 (Actual Team)"
+        labelText="Team 2 (Actual Team) - Optional"
         value={formData.team2 && formData.team2_subid ? `${formData.team2}-${formData.team2_subid}` : ""}
         onChange={handleSelectChange}
-        disabled={!formData.team1}
         style={{ marginBottom: "1rem" }}
       >
         <SelectItem value="" text="Select Team 2" />
