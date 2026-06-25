@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
+from typing import Optional
 from backend.models.match import MatchCreate, MatchUpdate, Match, MatchStatus
 from backend.database import get_database
 from backend.cache import (
@@ -347,9 +348,23 @@ async def update_match(id: str, match_update: MatchUpdate):
 
 
 @router.patch("/{id}/resolve", response_model=Match)
-async def resolve_playoff_match(id: str, team1: str, team1_subid: str, team2: str, team2_subid: str):
-    """Resolve a playoff match by replacing pool position placeholders with actual teams"""
+async def resolve_playoff_match(
+    id: str,
+    team1: Optional[str] = None,
+    team1_subid: Optional[str] = None,
+    team2: Optional[str] = None,
+    team2_subid: Optional[str] = None
+):
+    """Resolve a playoff match by replacing pool position placeholders with actual teams.
+    Can resolve one or both teams - at least one team must be provided."""
     db = get_database()
+    
+    # Validate at least one team is provided
+    if not ((team1 and team1_subid) or (team2 and team2_subid)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one team (team1 or team2) must be provided"
+        )
     
     # Validate ObjectId format
     if not ObjectId.is_valid(id):
@@ -383,57 +398,74 @@ async def resolve_playoff_match(id: str, team1: str, team1_subid: str, team2: st
             detail="This match does not have pool position placeholders to resolve"
         )
     
-    # Validate new teams are different
-    if team1 == team2 and team1_subid == team2_subid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A subteam cannot play against itself"
-        )
+    # Validate new teams are different (only if both are provided)
+    if team1 and team1_subid and team2 and team2_subid:
+        if team1 == team2 and team1_subid == team2_subid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A subteam cannot play against itself"
+            )
     
-    # Convert subteam IDs to integers
-    try:
-        team1_subid_int = int(team1_subid)
-        team2_subid_int = int(team2_subid)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="team1_subid and team2_subid must be valid integers"
-        )
-    
-    # Verify both subteams exist
+    # Get event from existing match
     event = existing_match.get("event", "foosball")
-    team1_doc = db.subteams.find_one({
-        "event": event,
-        "team": team1,
-        "subteam_id": team1_subid_int
-    })
-    team2_doc = db.subteams.find_one({
-        "event": event,
-        "team": team2,
-        "subteam_id": team2_subid_int
-    })
     
-    if not team1_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"SubTeam '{team1}-{team1_subid}' not found for event '{event}'"
-        )
+    # Prepare update data
+    update_data = {}
     
-    if not team2_doc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"SubTeam '{team2}-{team2_subid}' not found for event '{event}'"
-        )
+    # Validate and add team1 if provided
+    if team1 and team1_subid:
+        try:
+            team1_subid_int = int(team1_subid)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="team1_subid must be a valid integer"
+            )
+        
+        team1_doc = db.subteams.find_one({
+            "event": event,
+            "team": team1,
+            "subteam_id": team1_subid_int
+        })
+        
+        if not team1_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"SubTeam '{team1}-{team1_subid}' not found for event '{event}'"
+            )
+        
+        update_data["team1"] = team1
+        update_data["team1_subid"] = team1_subid
+    
+    # Validate and add team2 if provided
+    if team2 and team2_subid:
+        try:
+            team2_subid_int = int(team2_subid)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="team2_subid must be a valid integer"
+            )
+        
+        team2_doc = db.subteams.find_one({
+            "event": event,
+            "team": team2,
+            "subteam_id": team2_subid_int
+        })
+        
+        if not team2_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"SubTeam '{team2}-{team2_subid}' not found for event '{event}'"
+            )
+        
+        update_data["team2"] = team2
+        update_data["team2_subid"] = team2_subid
     
     # Update match with actual teams
     db.matches.update_one(
         {"_id": ObjectId(id)},
-        {"$set": {
-            "team1": team1,
-            "team1_subid": team1_subid,
-            "team2": team2,
-            "team2_subid": team2_subid
-        }}
+        {"$set": update_data}
     )
     
     # Get updated match
