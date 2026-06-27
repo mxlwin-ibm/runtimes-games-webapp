@@ -50,6 +50,29 @@ import AnnouncementTicker from '../components/common/AnnouncementTicker';
 import AnnouncementManager from '../components/forms/AnnouncementManager';
 import { useAuth } from '../contexts/AuthContext';
 
+const formatTeamDisplay = (teamName, subteamId) => {
+  if (subteamId === "0") {
+    const placeholderMap = {
+      "POOL_A_1ST": "Pool A Winner",
+      "POOL_A_2ND": "Pool A Runner-up",
+      "POOL_B_1ST": "Pool B Winner",
+      "POOL_B_2ND": "Pool B Runner-up",
+      "POOL_C_1ST": "Pool C Winner",
+      "POOL_C_2ND": "Pool C Runner-up",
+      "POOL_D_1ST": "Pool D Winner",
+      "POOL_D_2ND": "Pool D Runner-up",
+      "QF1_WINNER": "QF1 Winner",
+      "QF2_WINNER": "QF2 Winner",
+      "QF3_WINNER": "QF3 Winner",
+      "QF4_WINNER": "QF4 Winner",
+      "SF1_WINNER": "SF1 Winner",
+      "SF2_WINNER": "SF2 Winner",
+    };
+    return placeholderMap[teamName] || teamName;
+  }
+  return `${teamName}-${subteamId}`;
+};
+
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -521,7 +544,7 @@ const Dashboard = () => {
                       marginBottom: 'var(--cds-spacing-04, 0.75rem)',
                       color: 'var(--cds-text-primary, #161616)',
                     }}>
-                      {nextMatch.team1}-{nextMatch.team1_subid}
+                      {formatTeamDisplay(nextMatch.team1, nextMatch.team1_subid)}
                     </div>
                     <div style={{
                       fontSize: '1rem',
@@ -537,7 +560,7 @@ const Dashboard = () => {
                       marginTop: 'var(--cds-spacing-04, 0.75rem)',
                       color: 'var(--cds-text-primary, #161616)',
                     }}>
-                      {nextMatch.team2}-{nextMatch.team2_subid}
+                      {formatTeamDisplay(nextMatch.team2, nextMatch.team2_subid)}
                     </div>
                   </div>
                   <div style={{
