@@ -27,20 +27,25 @@ def _extract_error_message(response: httpx.Response) -> str:
 
 
 @mcp.tool()
-async def get_points_table(pool: str | None = None) -> dict[str, Any]:
+async def get_points_table(pool: str | None = None, event: str | None = None) -> dict[str, Any]:
     """Retrieve the current league points table.
 
     Args:
         pool: Optional pool filter. When provided, only standings for the specified pool are returned.
+        event: Optional event name filter (e.g., 'foosball').
 
     Returns:
         A structured dictionary containing standings entries and summary metadata.
     """
-    LOGGER.info("Fetching points table with pool filter: %s", pool)
+    LOGGER.info("Fetching points table with pool filter: %s, event filter: %s", pool, event)
+
+    params = {}
+    if event:
+        params["event"] = event.strip()
 
     async with create_async_client() as client:
         try:
-            response = await client.get("/points-table/")
+            response = await client.get("/points-table/", params=params)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             message = _extract_error_message(exc.response)
