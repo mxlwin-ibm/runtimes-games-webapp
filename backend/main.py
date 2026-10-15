@@ -14,6 +14,10 @@ async def lifespan(app: FastAPI):
     # Startup
     connect_to_mongo()
     init_redis()
+    # Bust any stale dashboard cache so the first request after a deploy
+    # always recomputes fresh data (covers the mvp=None else-branch fix).
+    from backend.cache import invalidate_dashboard_cache
+    await invalidate_dashboard_cache()
     yield
     # Shutdown
     close_mongo_connection()
