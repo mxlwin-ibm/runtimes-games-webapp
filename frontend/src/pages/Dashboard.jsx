@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Grid,
   Column,
@@ -48,6 +49,7 @@ import LoadingState from '../components/common/LoadingState';
 import EmptyState from '../components/common/EmptyState';
 import AnnouncementTicker from '../components/common/AnnouncementTicker';
 import AnnouncementManager from '../components/forms/AnnouncementManager';
+import EventManager from '../components/forms/EventManager';
 import { useAuth } from '../contexts/AuthContext';
 
 const formatTeamDisplay = (teamName, subteamId) => {
@@ -73,6 +75,9 @@ const formatTeamDisplay = (teamName, subteamId) => {
   return `${teamName}-${subteamId}`;
 };
 
+// Events scored in goals; the MVP card only shows Goals for these.
+const GOAL_BASED_EVENTS = ['foosball', 'football'];
+
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -80,52 +85,57 @@ const Dashboard = () => {
   const [pointsTable, setPointsTable] = useState([]);
   const [teams, setTeams] = useState([]);
   const [dashboardStats, setDashboardStats] = useState(null);
-  const [subteams, setSubteams] = useState([]);
+  const [ongoingEvents, setOngoingEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState('foosball');
   const [overallStandings, setOverallStandings] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
-  const [isEditingEvents, setIsEditingEvents] = useState(false);
+  const [isEventManagerOpen, setIsEventManagerOpen] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const { isAdmin } = useAuth();
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [selectedEvent]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Use new dashboard endpoint for initial load (single API call!)
-      const dashboardRes = await getDashboard({ event: 'foosball' });
-      const dashboardData = dashboardRes.data;
+      // Fetch dashboard data for selected event and supporting data in parallel
+      const [dashboardRes, teamsRes, allMatchesRes] = await Promise.all([
+        getDashboard({ event: selectedEvent }),
+        getPlayers(),
+        getMatches(),
+      ]);
 
-      // Also fetch players/teams data for overall standings calculation
-      const teamsRes = await getPlayers();
-      
-      // Extract data from dashboard response
-      const matchesData = dashboardData.recentResults || [];
-      const pointsTableData = dashboardData.standings || [];
-      const announcementsData = dashboardData.announcements || [];
-      const eventsData = dashboardData.events || [];
-      const mvpData = dashboardData.mvp || null;
-      const statsData = dashboardData.stats || null;
-      
-      // We still need all matches for overall standings calculation
-      // Fetch separately since dashboard only returns recent results
-      const allMatchesRes = await getMatches();
-      
-      setMatches(allMatchesRes.data || []);
-      setPointsTable(pointsTableData);
-      setTeams(teamsRes.data || []);
-      setDashboardStats(statsData);
-      setSubteams(mvpData ? [mvpData] : []); // Set MVP as subteam for compatibility
-      setUpcomingEvents(eventsData);
-      setAnnouncements(announcementsData);
-      
-      // Calculate overall tournament standings from final matches
-      const standings = calculateOverallStandings(allMatchesRes.data || [], teamsRes.data || []);
+      const dashboardData = dashboardRes.data;
+      const allMatches = allMatchesRes.data || [];
+      const allTeams = teamsRes.data || [];
+
+      setMatches(allMatches);
+      setPointsTable(dashboardData.standings || []);
+      setTeams(allTeams);
+      setDashboardStats(dashboardData.stats || null);
+      setUpcomingEvents(dashboardData.events || []);
+      setAnnouncements(dashboardData.announcements || []);
+
+      const incoming = dashboardData.ongoingEvents || [];
+      setOngoingEvents(incoming);
+
+      // If the currently selected event was filtered out (tournament complete),
+      // switch to the first remaining ongoing event so the dashboard isn't stuck
+      // showing a completed event.
+      if (
+        incoming.length > 0 &&
+        !incoming.some(e => e.event.toLowerCase() === selectedEvent.toLowerCase())
+      ) {
+        setSelectedEvent(incoming[0].event.toLowerCase());
+      }
+
+      // Calculate overall tournament standings from final matches across all sports
+      const standings = calculateOverallStandings(allMatches, allTeams);
       setOverallStandings(standings);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -136,27 +146,35 @@ const Dashboard = () => {
   };
 
   const handleEventChange = (index, field, value) => {
-    const updated = [...upcomingEvents];
-    updated[index][field] = value;
-    setUpcomingEvents(updated);
+    setUpcomingEvents(prev =>
+      prev.map((ev, i) => (i === index ? { ...ev, [field]: value } : ev))
+    );
   };
 
   const saveEvents = async () => {
     try {
       await updateEvents(upcomingEvents);
       setIsEditingEvents(false);
+      fetchDashboardData();
     } catch (err) {
       console.error('Error saving events:', err);
       alert('Failed to save events. Please try again.');
     }
   };
 
+  // Helper to reliably parse date and time string into timestamp for sorting
+  const parseMatchDateTime = (dateStr, timeStr) => {
+    if (!dateStr) return 0;
+    const rawTime = timeStr || '00:00';
+    const formattedTime = rawTime.length === 4 ? `0${rawTime}` : rawTime;
+    const dt = new Date(`${dateStr}T${formattedTime}`);
+    return isNaN(dt.getTime()) ? 0 : dt.getTime();
+  };
+
   // Calculate overall tournament standings from playoff finals
   const calculateOverallStandings = (allMatches, teamsData) => {
-    // Initialize all teams with 0 points
     const teamPoints = {};
-    
-    // Get unique team names from teams data
+
     teamsData.forEach(player => {
       const teamName = player.team;
       if (!teamPoints[teamName]) {
@@ -164,20 +182,34 @@ const Dashboard = () => {
       }
     });
 
-    // Find all final matches (match_type is 'final' or 'playoff' with position starting with 'F')
     const finalMatches = allMatches.filter(
       m => (m.match_type === 'final' ||
             (m.match_type === 'playoff' && m.playoff_position?.startsWith('F'))) &&
            m.match_status === 'played'
     );
 
-    // Award points based on final match results
     finalMatches.forEach(match => {
-      const winner = match.team1_score > match.team2_score ? match.team1 : match.team2;
-      const runnerUp = match.team1_score > match.team2_score ? match.team2 : match.team1;
-      const event = match.event || 'Unknown Event';
+      const score1 = match.team1_score ?? 0;
+      const score2 = match.team2_score ?? 0;
+      const eventName = match.event || 'Unknown Event';
+      const formattedEvent = eventName.charAt(0).toUpperCase() + eventName.slice(1);
 
-      // Initialize team entries if they don't exist (for teams not in players list)
+      // Handle drawn final match gracefully
+      if (score1 === score2) {
+        const team1 = match.team1;
+        const team2 = match.team2;
+        if (!teamPoints[team1]) teamPoints[team1] = { team: team1, points: 0, breakdown: [] };
+        if (!teamPoints[team2]) teamPoints[team2] = { team: team2, points: 0, breakdown: [] };
+        teamPoints[team1].points += 75;
+        teamPoints[team1].breakdown.push({ event: formattedEvent, position: 'Joint Winner', points: 75 });
+        teamPoints[team2].points += 75;
+        teamPoints[team2].breakdown.push({ event: formattedEvent, position: 'Joint Winner', points: 75 });
+        return;
+      }
+
+      const winner = score1 > score2 ? match.team1 : match.team2;
+      const runnerUp = score1 > score2 ? match.team2 : match.team1;
+
       if (!teamPoints[winner]) {
         teamPoints[winner] = { team: winner, points: 0, breakdown: [] };
       }
@@ -185,118 +217,183 @@ const Dashboard = () => {
         teamPoints[runnerUp] = { team: runnerUp, points: 0, breakdown: [] };
       }
 
-      // Award points: Winner = 100, Runner-up = 50
       teamPoints[winner].points += 100;
       teamPoints[winner].breakdown.push({
-        event: event.charAt(0).toUpperCase() + event.slice(1),
+        event: formattedEvent,
         position: 'Winner',
         points: 100
       });
 
       teamPoints[runnerUp].points += 50;
       teamPoints[runnerUp].breakdown.push({
-        event: event.charAt(0).toUpperCase() + event.slice(1),
+        event: formattedEvent,
         position: 'Runner-up',
         points: 50
       });
     });
 
-    // Convert to array and sort by points (descending), then by team name (ascending)
-    const standings = Object.values(teamPoints).sort((a, b) => {
+    return Object.values(teamPoints).sort((a, b) => {
       if (b.points !== a.points) {
         return b.points - a.points;
       }
       return a.team.localeCompare(b.team);
     });
-    
-    return standings;
   };
 
-  // Calculate tournament stats from real data
-  // Count total subteams for the event
+  // Find active ongoing event item from backend response or fallback
+  const activeOngoingEventData =
+    ongoingEvents.find(e => e.event.toLowerCase() === selectedEvent.toLowerCase()) ||
+    ongoingEvents[0] ||
+    null;
+
+  // Filter matches specifically for the selected ongoing event
+  const currentEventMatches = matches.filter(
+    m => (m.event || 'foosball').toLowerCase() === selectedEvent.toLowerCase()
+  );
+
+  // Tournament stats — computed directly from raw matches so they are always accurate,
+  // regardless of what the backend's ongoingEvents cache contains.
+  const currentEventSubteamCount = activeOngoingEventData?.stats?.totalTeams ?? (dashboardStats?.totalTeams ?? 0);
   const tournamentStats = {
-    teams: dashboardStats?.totalTeams ?? 0,
-    matches: dashboardStats?.totalMatches ?? matches.length,
-    round: matches.length > 0 ? Math.max(...matches.map(m => m.round || 1)) : 1,
-    completed: dashboardStats?.playedMatches ?? matches.filter(m => m.match_status === 'played').length,
+    teams: currentEventSubteamCount,
+    matches: currentEventMatches.length,
+    round: currentEventMatches.length > 0 ? Math.max(...currentEventMatches.map(m => m.round || 1)) : 1,
+    completed: currentEventMatches.filter(m => m.match_status === 'played').length,
   };
 
-  // Get next scheduled match - sort by date and time
-  const nextMatch = matches
-    .filter(m => m.match_status === 'scheduled')
-    .sort((a, b) => {
-      // If both have date and time, sort by datetime
-      if (a.match_date && a.match_time && b.match_date && b.match_time) {
-        const dateTimeA = new Date(`${a.match_date}T${a.match_time}`);
-        const dateTimeB = new Date(`${b.match_date}T${b.match_time}`);
-        return dateTimeA - dateTimeB;
-      }
-      // Fallback to round number if date/time not available
-      return (a.round || 0) - (b.round || 0);
-    })[0];
+  // Next scheduled match (prioritizing selected event, then any scheduled match)
+  const selectedEventScheduled = currentEventMatches.filter(m => m.match_status === 'scheduled');
+  const allScheduled = matches.filter(m => m.match_status === 'scheduled');
+  const candidateScheduled = selectedEventScheduled.length > 0 ? selectedEventScheduled : allScheduled;
+  const nextMatch = candidateScheduled.sort((a, b) => {
+    const timeA = parseMatchDateTime(a.match_date, a.match_time);
+    const timeB = parseMatchDateTime(b.match_date, b.match_time);
+    if (timeA && timeB) return timeA - timeB;
+    if (timeA) return -1;
+    if (timeB) return 1;
+    return (a.round || 0) - (b.round || 0);
+  })[0];
 
-  // Get latest completed match by date and time
-  const latestResult = matches
-    .filter(m => m.match_status === 'played')
-    .sort((a, b) => {
-      // Combine date and time for proper chronological sorting
-      const dateTimeA = `${a.match_date || '1970-01-01'} ${a.match_time || '00:00'}`;
-      const dateTimeB = `${b.match_date || '1970-01-01'} ${b.match_time || '00:00'}`;
-      return dateTimeB.localeCompare(dateTimeA); // Descending order (most recent first)
-    })[0];
+  // Latest completed match (prioritizing selected event, then any completed match)
+  const selectedEventPlayed = currentEventMatches.filter(m => m.match_status === 'played');
+  const allPlayed = matches.filter(m => m.match_status === 'played');
+  const candidatePlayed = selectedEventPlayed.length > 0 ? selectedEventPlayed : allPlayed;
+  const latestResult = candidatePlayed.sort((a, b) => {
+    const timeA = parseMatchDateTime(a.match_date, a.match_time);
+    const timeB = parseMatchDateTime(b.match_date, b.match_time);
+    if (timeA && timeB) return timeB - timeA;
+    if (timeA) return -1;
+    if (timeB) return 1;
+    return (b.round || 0) - (a.round || 0);
+  })[0];
 
-  // Get recent results (last 3 completed matches) - sorted by date+time chronologically
-  const recentResults = matches
-    .filter(m => m.match_status === 'played')
+  // Recent results (last 3 completed matches)
+  const recentResults = candidatePlayed
     .sort((a, b) => {
-      // Combine date and time for proper chronological sorting
-      const dateTimeA = `${a.match_date || '1970-01-01'} ${a.match_time || '00:00'}`;
-      const dateTimeB = `${b.match_date || '1970-01-01'} ${b.match_time || '00:00'}`;
-      return dateTimeB.localeCompare(dateTimeA); // Descending order (most recent first)
+      const timeA = parseMatchDateTime(a.match_date, a.match_time);
+      const timeB = parseMatchDateTime(b.match_date, b.match_time);
+      if (timeA && timeB) return timeB - timeA;
+      if (timeA) return -1;
+      if (timeB) return 1;
+      return (b.round || 0) - (a.round || 0);
     })
     .slice(0, 3);
 
-  // Calculate MVP from dashboard data or points table
+  // Calculate MVP from active ongoing event or points table.
+  // Returns null when there are no ongoing events — the MVP card must be
+  // blank when all tournaments are complete.
   const calculateMVP = () => {
-    // If we have MVP from dashboard endpoint, use it
-    if (subteams.length > 0 && subteams[0].team_name) {
-      const mvp = subteams[0];
+    if (ongoingEvents.length === 0) return null;
+
+    if (activeOngoingEventData?.mvp) {
+      const mvp = activeOngoingEventData.mvp;
+      const wonSafe = mvp.won ?? 0;
       const winRatio = mvp.played > 0
-        ? Math.round((mvp.won / mvp.played) * 100)
+        ? Math.round((wonSafe / mvp.played) * 100)
         : 0;
 
       return {
-        name: mvp.team_id || 'Unknown', // team_id contains player names
+        name: mvp.team_id || 'Unknown',
         team: mvp.team_name?.split('-')[0] || 'Unknown',
         subteam: mvp.team_name || 'Unknown',
-        event: 'foosball',
-        wins: mvp.won || 0,
-        goals: mvp.gf || 0,
+        event: activeOngoingEventData.event || selectedEvent,
+        wins: wonSafe,
+        goals: mvp.gf ?? 0,
         winRatio: `${winRatio}%`,
       };
     }
-    
-    // Fallback: use first entry from points table
+
     if (pointsTable.length > 0) {
       const topTeam = pointsTable[0];
+      const wonSafe = topTeam.won ?? 0;
       const winRatio = topTeam.played > 0
-        ? Math.round((topTeam.won / topTeam.played) * 100)
+        ? Math.round((wonSafe / topTeam.played) * 100)
         : 0;
 
       return {
         name: topTeam.team_id || 'Unknown',
         team: topTeam.team_name?.split('-')[0] || 'Unknown',
         subteam: topTeam.team_name || 'Unknown',
-        event: 'foosball',
-        wins: topTeam.won || 0,
-        goals: topTeam.gf || 0,
+        event: selectedEvent,
+        wins: wonSafe,
+        goals: topTeam.gf ?? 0,
         winRatio: `${winRatio}%`,
       };
     }
-    
+
     return null;
   };
 
+  // Stage milestones for selected event tournament
+  const getStageMilestones = () => {
+    const leagueMatches = currentEventMatches.filter(m => m.match_type === 'league');
+    const qfMatches = currentEventMatches.filter(
+      m => m.match_type === 'quarter_final' || (m.match_type === 'playoff' && m.playoff_position?.startsWith('QF'))
+    );
+    const sfMatches = currentEventMatches.filter(
+      m => m.match_type === 'semi_final' || (m.match_type === 'playoff' && m.playoff_position?.startsWith('SF'))
+    );
+    const finalMatches = currentEventMatches.filter(
+      m => m.match_type === 'final' || (m.match_type === 'playoff' && m.playoff_position?.startsWith('F'))
+    );
+
+    const getStageStatus = (matchesList) => {
+      if (matchesList.length === 0) return 'upcoming';
+      const played = matchesList.filter(m => m.match_status === 'played').length;
+      if (played === matchesList.length && matchesList.length > 0) return 'completed';
+      if (played > 0) return 'active';
+      return 'scheduled';
+    };
+
+    return [
+      {
+        id: 'group',
+        name: 'Group Stage',
+        status: getStageStatus(leagueMatches),
+        count: leagueMatches.length > 0 ? `${leagueMatches.filter(m => m.match_status === 'played').length}/${leagueMatches.length}` : null,
+      },
+      {
+        id: 'qf',
+        name: 'Quarter Finals',
+        status: getStageStatus(qfMatches),
+        count: qfMatches.length > 0 ? `${qfMatches.filter(m => m.match_status === 'played').length}/${qfMatches.length}` : null,
+      },
+      {
+        id: 'sf',
+        name: 'Semi Finals',
+        status: getStageStatus(sfMatches),
+        count: sfMatches.length > 0 ? `${sfMatches.filter(m => m.match_status === 'played').length}/${sfMatches.length}` : null,
+      },
+      {
+        id: 'final',
+        name: 'Final',
+        status: getStageStatus(finalMatches),
+        count: finalMatches.length > 0 ? `${finalMatches.filter(m => m.match_status === 'played').length}/${finalMatches.length}` : null,
+      },
+    ];
+  };
+
+  const stageMilestones = getStageMilestones();
   const currentMVP = calculateMVP();
 
   // Prepare overall tournament standings data for DataTable
@@ -355,93 +452,178 @@ const Dashboard = () => {
           </p>
         </div>
 
-        {/* Announcement Ticker with Admin Button */}
-        <div style={{ position: 'relative' }}>
-          <AnnouncementTicker announcements={announcements} />
-          {isAdmin && announcements.length > 0 && (
-            <Button
-              size="sm"
-              kind="ghost"
-              renderIcon={Notification}
-              iconDescription="Manage Announcements"
-              onClick={() => setIsAnnouncementModalOpen(true)}
-              style={{
-                position: 'absolute',
-                right: '16px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'white',
-                zIndex: 1,
-              }}
-            >
-              Manage
-            </Button>
-          )}
-        </div>
+        {/* Announcement Banner */}
+        <AnnouncementTicker
+          announcements={announcements}
+          isAdmin={isAdmin}
+          onManageClick={() => setIsAnnouncementModalOpen(true)}
+        />
 
-        {/* HERO SECTION */}
+        {/* HERO SECTION / ONGOING EVENTS */}
+        {ongoingEvents.length === 0 ? (
+          <Tile style={{
+            padding: 'var(--cds-spacing-07, 2rem)',
+            marginBottom: 'var(--cds-spacing-05, 1rem)',
+            backgroundColor: 'var(--cds-layer-01, #ffffff)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+          }}>
+            <Trophy size={40} style={{ color: 'var(--cds-icon-disabled, #8d8d8d)' }} />
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '400', margin: 0, color: 'var(--cds-text-primary, #161616)' }}>
+                No ongoing events
+              </h2>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: 'var(--cds-text-secondary, #525252)' }}>
+                All tournaments have concluded. Check the Overall Standings below.
+              </p>
+            </div>
+          </Tile>
+        ) : (
         <Tile style={{
           padding: 'var(--cds-spacing-07, 2rem)',
           marginBottom: 'var(--cds-spacing-05, 1rem)',
           backgroundColor: 'var(--cds-layer-01, #ffffff)',
         }}>
-          {/* League Info */}
+          {/* Header & Parallel Event Badges */}
           <div style={{ marginBottom: 'var(--cds-spacing-06, 1.5rem)' }}>
-            <Tag type="green" style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
-              Ongoing Event
-            </Tag>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 'var(--cds-spacing-03, 0.5rem)',
+              marginBottom: 'var(--cds-spacing-04, 0.75rem)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Tag type="green">Ongoing Events</Tag>
+                {ongoingEvents.length > 1 && (
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--cds-text-secondary, #525252)' }}>
+                    ({ongoingEvents.length} events running in parallel)
+                  </span>
+                )}
+              </div>
+
+              {/* Event switcher pills when multiple events are running */}
+              {ongoingEvents.length > 1 && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {ongoingEvents.map(ev => {
+                    const isSelected = selectedEvent.toLowerCase() === ev.event.toLowerCase();
+                    return (
+                      <Tag
+                        key={ev.event}
+                        type={isSelected ? 'blue' : 'cool-gray'}
+                        style={{
+                          cursor: 'pointer',
+                          fontWeight: isSelected ? '600' : '400',
+                          padding: '4px 10px',
+                          margin: 0,
+                          transition: 'all 0.2s ease',
+                          border: isSelected ? '1px solid var(--cds-interactive-01, #0f62fe)' : '1px solid transparent',
+                        }}
+                        onClick={() => setSelectedEvent(ev.event.toLowerCase())}
+                      >
+                        {ev.event.toUpperCase()} ({ev.stats?.playedMatches ?? 0}/{ev.stats?.totalMatches ?? 0})
+                      </Tag>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--cds-spacing-04, 0.75rem)' }}>
               <Trophy size={40} style={{ marginRight: 'var(--cds-spacing-05, 1rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
               <div>
-                <h2 style={{ 
-                  fontSize: '2.25rem', 
+                <h2 style={{
+                  fontSize: '2.25rem',
                   fontWeight: '300',
                   lineHeight: '1.25',
-                  margin: 0, 
+                  margin: 0,
                   color: 'var(--cds-text-primary, #161616)',
                   letterSpacing: '0',
                 }}>
-                  {nextMatch ? nextMatch.event.toUpperCase() : 'FOOSBALL'}
+                  {selectedEvent.toUpperCase()}
                 </h2>
-                <p style={{
-                  fontSize: '1rem',
-                  color: 'var(--cds-text-secondary, #525252)',
-                  margin: 'var(--cds-spacing-02, 0.25rem) 0 0 0',
-                  fontWeight: '400',
-                }}>
-                  {nextMatch
-                    ? `${nextMatch.match_type === 'league'
-                        ? 'League Stage'
-                        : 'Playoff Stage'} · ${nextMatch.match_type === 'quarter_final'
-                        ? 'Quarter Final'
-                        : nextMatch.match_type === 'semi_final'
-                          ? 'Semi Final'
-                          : nextMatch.match_type === 'final'
-                            ? 'Final'
-                            : `Round ${nextMatch.round}`}`
-                    : `League Stage · Round ${tournamentStats.round}`}
-                </p>
               </div>
             </div>
           </div>
 
-          {/* Progress Bar */}
+          {/* Tournament Stage Milestone Visualizer */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            overflowX: 'auto',
+            padding: '12px 16px',
+            backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+            borderRadius: '6px',
+            marginBottom: 'var(--cds-spacing-06, 1.5rem)',
+          }}>
+            {stageMilestones.map((st, i) => {
+              const isCompleted = st.status === 'completed';
+              const isActive = st.status === 'active';
+              const isScheduled = st.status === 'scheduled';
+              const badgeBg = isCompleted ? '#24a148' : isActive ? '#0f62fe' : isScheduled ? '#0043ce' : '#8d8d8d';
+
+              return (
+                <React.Fragment key={st.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 'fit-content' }}>
+                    <div style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      backgroundColor: badgeBg,
+                      color: '#ffffff',
+                    }}>
+                      {isCompleted ? '✓' : i + 1}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--cds-text-primary, #161616)' }}>
+                        {st.name}
+                      </div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--cds-text-secondary, #525252)' }}>
+                        {isCompleted ? 'Completed' : isActive ? 'Live / In Progress' : isScheduled ? 'Scheduled' : 'Upcoming'}
+                        {st.count && ` (${st.count})`}
+                      </div>
+                    </div>
+                  </div>
+                  {i < stageMilestones.length - 1 && (
+                    <div style={{
+                      flex: 1,
+                      height: '2px',
+                      backgroundColor: stageMilestones[i + 1].status !== 'upcoming' ? '#0f62fe' : '#e0e0e0',
+                      minWidth: '24px',
+                      margin: '0 8px',
+                    }} />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {/* Progress Bar for selected event */}
           <div style={{ marginBottom: 'var(--cds-spacing-06, 1.5rem)' }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
               marginBottom: 'var(--cds-spacing-03, 0.5rem)',
             }}>
-              <span style={{ 
-                fontSize: '0.875rem', 
-                fontWeight: '600', 
+              <span style={{
+                fontSize: '0.875rem',
+                fontWeight: '600',
                 color: 'var(--cds-text-primary, #161616)',
               }}>
-                Tournament Progress
+                {selectedEvent.toUpperCase()} Tournament Progress
               </span>
-              <span style={{ 
-                fontSize: '0.875rem', 
-                fontWeight: '600', 
+              <span style={{
+                fontSize: '0.875rem',
+                fontWeight: '600',
                 color: 'var(--cds-link-primary, #0f62fe)',
               }}>
                 {tournamentStats.completed} / {tournamentStats.matches} Matches
@@ -455,7 +637,7 @@ const Dashboard = () => {
             />
           </div>
 
-          {/* Quick Stats */}
+          {/* Quick Stats for selected event */}
           <Grid narrow style={{ marginTop: 'var(--cds-spacing-05, 1rem)' }}>
             <Column lg={5} md={4} sm={4}>
               <Tile style={{
@@ -466,9 +648,9 @@ const Dashboard = () => {
               }}>
                 <User size={32} style={{ marginRight: 'var(--cds-spacing-05, 1rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
                 <div>
-                  <div style={{ 
-                    fontSize: '2rem', 
-                    fontWeight: '300', 
+                  <div style={{
+                    fontSize: '2rem',
+                    fontWeight: '300',
                     lineHeight: '1.25',
                     color: 'var(--cds-text-primary, #161616)',
                   }}>
@@ -487,9 +669,9 @@ const Dashboard = () => {
               }}>
                 <GameConsole size={32} style={{ marginRight: 'var(--cds-spacing-05, 1rem)', color: 'var(--cds-icon-primary, #0f62fe)' }} />
                 <div>
-                  <div style={{ 
-                    fontSize: '2rem', 
-                    fontWeight: '300', 
+                  <div style={{
+                    fontSize: '2rem',
+                    fontWeight: '300',
                     lineHeight: '1.25',
                     color: 'var(--cds-text-primary, #161616)',
                   }}>
@@ -508,9 +690,9 @@ const Dashboard = () => {
               }}>
                 <ChartLine size={32} style={{ marginRight: 'var(--cds-spacing-05, 1rem)', color: 'var(--cds-interactive-01, #0f62fe)' }} />
                 <div>
-                  <div style={{ 
-                    fontSize: '2rem', 
-                    fontWeight: '300', 
+                  <div style={{
+                    fontSize: '2rem',
+                    fontWeight: '300',
                     lineHeight: '1.25',
                     color: 'var(--cds-text-primary, #161616)',
                   }}>
@@ -521,7 +703,46 @@ const Dashboard = () => {
               </Tile>
             </Column>
           </Grid>
+
+          {/* Quick-Action CTAs */}
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            flexWrap: 'wrap',
+            marginTop: 'var(--cds-spacing-06, 1.5rem)',
+            paddingTop: 'var(--cds-spacing-05, 1rem)',
+            borderTop: '1px solid var(--cds-border-subtle-01, #e0e0e0)',
+          }}>
+            <Button
+              size="sm"
+              kind="primary"
+              renderIcon={Calendar}
+              as={Link}
+              to={`/matches?event=${encodeURIComponent(selectedEvent)}`}
+            >
+              View Match Schedule
+            </Button>
+            <Button
+              size="sm"
+              kind="tertiary"
+              renderIcon={Trophy}
+              as={Link}
+              to={`/points-table?event=${encodeURIComponent(selectedEvent)}`}
+            >
+              Full Standings Table
+            </Button>
+            <Button
+              size="sm"
+              kind="ghost"
+              renderIcon={User}
+              as={Link}
+              to={`/squads?event=${encodeURIComponent(selectedEvent)}`}
+            >
+              Squad Rosters
+            </Button>
+          </div>
         </Tile>
+        )}
 
         {/* SUMMARY CARDS */}
         <Grid narrow style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
@@ -532,15 +753,27 @@ const Dashboard = () => {
               height: '100%',
               backgroundColor: 'var(--cds-layer-01, #ffffff)',
             }}>
-              <Tag type="blue" style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
-                Next Match
-              </Tag>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 'var(--cds-spacing-05, 1rem)'
+              }}>
+                <Tag type="blue" style={{ margin: 0 }}>
+                  Next Match
+                </Tag>
+                {nextMatch?.event && (
+                  <Tag type="cyan" size="sm" style={{ margin: 0 }}>
+                    {nextMatch.event.toUpperCase()}
+                  </Tag>
+                )}
+              </div>
               {nextMatch ? (
                 <>
                   <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
-                    <div style={{ 
-                      fontSize: '1.125rem', 
-                      fontWeight: '600', 
+                    <div style={{
+                      fontSize: '1.125rem',
+                      fontWeight: '600',
                       marginBottom: 'var(--cds-spacing-04, 0.75rem)',
                       color: 'var(--cds-text-primary, #161616)',
                     }}>
@@ -554,9 +787,9 @@ const Dashboard = () => {
                     }}>
                       VS
                     </div>
-                    <div style={{ 
-                      fontSize: '1.125rem', 
-                      fontWeight: '600', 
+                    <div style={{
+                      fontSize: '1.125rem',
+                      fontWeight: '600',
                       marginTop: 'var(--cds-spacing-04, 0.75rem)',
                       color: 'var(--cds-text-primary, #161616)',
                     }}>
@@ -595,9 +828,21 @@ const Dashboard = () => {
               height: '100%',
               backgroundColor: 'var(--cds-layer-01, #ffffff)',
             }}>
-              <Tag type="green" style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
-                Latest Result
-              </Tag>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 'var(--cds-spacing-05, 1rem)'
+              }}>
+                <Tag type="green" style={{ margin: 0 }}>
+                  Latest Result
+                </Tag>
+                {latestResult?.event && (
+                  <Tag type="teal" size="sm" style={{ margin: 0 }}>
+                    {latestResult.event.toUpperCase()}
+                  </Tag>
+                )}
+              </div>
               {latestResult ? (
                 <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
                   <div style={{
@@ -609,7 +854,7 @@ const Dashboard = () => {
                     justifyContent: 'center',
                     color: 'var(--cds-text-primary, #161616)',
                   }}>
-                    {latestResult.team1}-{latestResult.team1_subid}
+                    {formatTeamDisplay(latestResult.team1, latestResult.team1_subid)}
                     {latestResult.team1_score > latestResult.team2_score && (
                       <CheckmarkFilled size={20} style={{ marginLeft: 'var(--cds-spacing-03, 0.5rem)', color: 'var(--cds-support-success, #24a148)' }} />
                     )}
@@ -635,7 +880,7 @@ const Dashboard = () => {
                     justifyContent: 'center',
                     color: 'var(--cds-text-primary, #161616)',
                   }}>
-                    {latestResult.team2}-{latestResult.team2_subid}
+                    {formatTeamDisplay(latestResult.team2, latestResult.team2_subid)}
                     {latestResult.team2_score > latestResult.team1_score && (
                       <CheckmarkFilled size={20} style={{ marginLeft: 'var(--cds-spacing-03, 0.5rem)', color: 'var(--cds-support-success, #24a148)' }} />
                     )}
@@ -656,9 +901,21 @@ const Dashboard = () => {
               height: '100%',
               backgroundColor: 'var(--cds-layer-01, #ffffff)',
             }}>
-              <Tag type="blue" style={{ marginBottom: 'var(--cds-spacing-05, 1rem)' }}>
-                Current MVP
-              </Tag>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 'var(--cds-spacing-05, 1rem)'
+              }}>
+                <Tag type="blue" style={{ margin: 0 }}>
+                  Current MVP
+                </Tag>
+                {currentMVP?.event && (
+                  <Tag type="magenta" size="sm" style={{ margin: 0 }}>
+                    {currentMVP.event.toUpperCase()}
+                  </Tag>
+                )}
+              </div>
               {currentMVP ? (
                 <div style={{ textAlign: 'center', margin: 'var(--cds-spacing-06, 1.5rem) 0' }}>
                   <Star size={48} style={{ color: 'var(--cds-interactive-01, #0f62fe)', marginBottom: 'var(--cds-spacing-05, 1rem)' }} />
@@ -698,20 +955,22 @@ const Dashboard = () => {
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Wins</div>
                     </Tile>
-                    <Tile style={{
-                      padding: 'var(--cds-spacing-04, 0.75rem)',
-                      backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
-                      minWidth: '70px',
-                    }}>
-                      <div style={{
-                        fontSize: '1.125rem',
-                        fontWeight: '600',
-                        color: 'var(--cds-link-primary, #0f62fe)',
+                    {GOAL_BASED_EVENTS.includes(String(currentMVP.event).toLowerCase()) && (
+                      <Tile style={{
+                        padding: 'var(--cds-spacing-04, 0.75rem)',
+                        backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
+                        minWidth: '70px',
                       }}>
-                        {currentMVP.goals}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Goals</div>
-                    </Tile>
+                        <div style={{
+                          fontSize: '1.125rem',
+                          fontWeight: '600',
+                          color: 'var(--cds-link-primary, #0f62fe)',
+                        }}>
+                          {currentMVP.goals}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary, #525252)' }}>Goals</div>
+                      </Tile>
+                    )}
                     <Tile style={{
                       padding: 'var(--cds-spacing-04, 0.75rem)',
                       backgroundColor: 'var(--cds-layer-02, #f4f4f4)',
@@ -982,13 +1241,20 @@ const Dashboard = () => {
                     textAlign: 'center',
                     height: '100%',
                   }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--cds-spacing-03, 0.5rem)' }}>
+                      {result.event && (
+                        <Tag type="cool-gray" size="sm" style={{ margin: 0 }}>
+                          {result.event.toUpperCase()}
+                        </Tag>
+                      )}
+                    </div>
                     <div style={{
                       fontSize: '1.125rem',
                       fontWeight: '600',
                       color: 'var(--cds-text-primary, #161616)',
                       marginBottom: 'var(--cds-spacing-05, 1rem)',
                     }}>
-                      {result.team1}-{result.team1_subid}
+                      {formatTeamDisplay(result.team1, result.team1_subid)}
                     </div>
                     <div style={{
                       padding: 'var(--cds-spacing-04, 0.75rem) var(--cds-spacing-06, 1.5rem)',
@@ -1007,7 +1273,7 @@ const Dashboard = () => {
                       color: 'var(--cds-text-primary, #161616)',
                       marginTop: 'var(--cds-spacing-05, 1rem)',
                     }}>
-                      {result.team2}-{result.team2_subid}
+                      {formatTeamDisplay(result.team2, result.team2_subid)}
                     </div>
                   </Tile>
                 </Column>
@@ -1043,21 +1309,28 @@ const Dashboard = () => {
               <Button
                 size="sm"
                 kind="ghost"
-                renderIcon={isEditingEvents ? Save : Edit}
-                iconDescription={isEditingEvents ? "Save" : "Edit"}
-                onClick={() => isEditingEvents ? saveEvents() : setIsEditingEvents(true)}
+                renderIcon={Edit}
+                iconDescription="Manage Events"
+                onClick={() => setIsEventManagerOpen(true)}
               >
-                {isEditingEvents ? 'Save' : 'Edit'}
+                Manage Events
               </Button>
             )}
           </div>
 
           {upcomingEvents.length > 0 ? (
             <DataTable
-              rows={upcomingEvents.map((e, i) => ({ id: i, event: e.event, month: e.month }))}
+              rows={upcomingEvents.map((e, i) => ({
+                id: e._id || e.id || `event-${i}`,
+                event: e.event,
+                month: e.month,
+                status: e.status || 'upcoming',
+                description: e.description || '',
+              }))}
               headers={[
                 { key: 'event', header: 'Event' },
-                { key: 'month', header: 'Month' }
+                { key: 'month', header: 'Month / Timing' },
+                { key: 'status', header: 'Status' }
               ]}
             >
               {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
@@ -1073,34 +1346,49 @@ const Dashboard = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {rows.map((row, idx) => (
-                        <TableRow {...getRowProps({ row })} key={row.id}>
-                          <TableCell>
-                            {isEditingEvents ? (
-                              <TextInput
-                                id={`event-${idx}`}
-                                labelText=""
-                                value={upcomingEvents[idx].event}
-                                onChange={(e) => handleEventChange(idx, 'event', e.target.value)}
-                              />
-                            ) : (
-                              row.cells[0].value
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {isEditingEvents ? (
-                              <TextInput
-                                id={`month-${idx}`}
-                                labelText=""
-                                value={upcomingEvents[idx].month}
-                                onChange={(e) => handleEventChange(idx, 'month', e.target.value)}
-                              />
-                            ) : (
-                              row.cells[1].value
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {rows.map((row) => {
+                        const eventItem = upcomingEvents.find(
+                          (ev, idx) => (ev._id || ev.id || `event-${idx}`) === row.id
+                        );
+                        const statusVal = eventItem?.status || 'upcoming';
+                        const statusTagType =
+                          statusVal === 'registration_open'
+                            ? 'teal'
+                            : statusVal === 'ongoing'
+                            ? 'green'
+                            : statusVal === 'completed'
+                            ? 'cool-gray'
+                            : 'blue';
+                        const statusLabel =
+                          statusVal === 'registration_open'
+                            ? 'Registration Open'
+                            : statusVal.charAt(0).toUpperCase() + statusVal.slice(1);
+
+                        return (
+                          <TableRow {...getRowProps({ row })} key={row.id}>
+                            <TableCell>
+                              <div style={{ fontWeight: 600, color: 'var(--cds-text-primary, #161616)' }}>
+                                {row.cells[0].value}
+                              </div>
+                              {eventItem?.description && (
+                                <div style={{ fontSize: '0.8125rem', color: 'var(--cds-text-secondary, #525252)' }}>
+                                  {eventItem.description}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <span style={{ color: 'var(--cds-text-secondary, #525252)' }}>
+                                {row.cells[1].value}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Tag type={statusTagType} size="sm">
+                                {statusLabel}
+                              </Tag>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -1187,7 +1475,7 @@ const Dashboard = () => {
                               fontWeight: match.team1_score > match.team2_score ? '600' : '400',
                               color: 'var(--cds-text-primary, #161616)',
                             }}>
-                              {match.team1}-{match.team1_subid}
+                              {formatTeamDisplay(match.team1, match.team1_subid)}
                             </div>
                           </div>
                           <div style={{
@@ -1206,7 +1494,7 @@ const Dashboard = () => {
                               fontWeight: match.team2_score > match.team1_score ? '600' : '400',
                               color: 'var(--cds-text-primary, #161616)',
                             }}>
-                              {match.team2}-{match.team2_subid}
+                              {formatTeamDisplay(match.team2, match.team2_subid)}
                             </div>
                           </div>
                         </div>
@@ -1221,7 +1509,7 @@ const Dashboard = () => {
                             fontWeight: '600',
                             color: 'var(--cds-support-success, #24a148)',
                           }}>
-                            Winner: {match.team1_score > match.team2_score ? `${match.team1}-${match.team1_subid}` : `${match.team2}-${match.team2_subid}`}
+                            Winner: {match.team1_score > match.team2_score ? formatTeamDisplay(match.team1, match.team1_subid) : formatTeamDisplay(match.team2, match.team2_subid)}
                           </div>
                         )}
                       </div>
@@ -1245,7 +1533,15 @@ const Dashboard = () => {
           open={isAnnouncementModalOpen}
           onClose={() => {
             setIsAnnouncementModalOpen(false);
-            // Refresh announcements after closing modal
+            fetchDashboardData();
+          }}
+        />
+
+        {/* Event Manager Modal */}
+        <EventManager
+          open={isEventManagerOpen}
+          onClose={() => {
+            setIsEventManagerOpen(false);
             fetchDashboardData();
           }}
         />
