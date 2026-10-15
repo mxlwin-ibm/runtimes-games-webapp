@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List
 from backend.database import get_async_database, get_database
 from backend.routes.matches import match_helper
 from backend.services.points_table import calculate_points_table
-from backend.cache import get_cached, set_cached, dashboard_cache_key
+from backend.cache import get_cached, set_cached, dashboard_cache_key, invalidate_dashboard_cache
 import json
 import os
 import asyncio
@@ -40,7 +40,7 @@ def process_matches_data(matches: List[Dict[str, Any]], subteams_count: int) -> 
     if scheduled_matches:
         sorted_scheduled = sorted(
             scheduled_matches,
-            key=lambda m: (m.get("match_date", ""), m.get("match_time", ""))
+            key=lambda m: (m.get("match_date") or "", m.get("match_time") or "")
         )
         next_match = match_helper(sorted_scheduled[0])
     
@@ -49,7 +49,7 @@ def process_matches_data(matches: List[Dict[str, Any]], subteams_count: int) -> 
     if played_matches:
         sorted_played = sorted(
             played_matches,
-            key=lambda m: (m.get("match_date", ""), m.get("match_time", "")),
+            key=lambda m: (m.get("match_date") or "", m.get("match_time") or ""),
             reverse=True
         )
         latest_result = match_helper(sorted_played[0])
@@ -59,7 +59,7 @@ def process_matches_data(matches: List[Dict[str, Any]], subteams_count: int) -> 
     if played_matches:
         sorted_played = sorted(
             played_matches,
-            key=lambda m: (m.get("match_date", ""), m.get("match_time", "")),
+            key=lambda m: (m.get("match_date") or "", m.get("match_time") or ""),
             reverse=True
         )
         recent_results = [match_helper(m) for m in sorted_played[:5]]
@@ -129,42 +129,29 @@ def get_recent_results(db, event: str = "foosball", limit: int = 5) -> List[Dict
     return [match_helper(match) for match in recent_matches]
 
 
-def get_mvp(db, event: str = "foosball") -> Optional[Dict[str, Any]]:
-    """Get MVP (subteam with most points and goals from database)"""
-    # Query subteams directly, sorted by points (desc), then goals for (desc)
-    mvp_subteam = db.subteams.find_one(
-        {"event": event},
-        sort=[("points", -1), ("gf", -1)]
-    )
-    
-    if not mvp_subteam:
+def build_mvp(event: str) -> Optional[Dict[str, Any]]:
+    """Top subteam by stats across league AND playoff matches."""
+    standings = calculate_points_table(event, include_playoffs=True)
+    if not standings:
         return None
-    
-    # Get player names
-    player_ids = mvp_subteam.get("player_ids", [])
-    player_names = []
-    if player_ids:
-        from bson import ObjectId
-        valid_ids = [ObjectId(pid) for pid in player_ids if ObjectId.is_valid(str(pid))]
-        if valid_ids:
-            players = list(db.players.find({"_id": {"$in": valid_ids}}))
-            player_names = [p.get("player_name", "Unknown") for p in players]
-    
-    team = mvp_subteam.get("team", "Unknown")
-    subteam_id = mvp_subteam.get("subteam_id", 0)
-    
+    top_entry = standings[0]
     return {
-        "team_name": f"{team}-{subteam_id}",
-        "team_id": ", ".join(player_names) if player_names else "No players",
-        "pool": mvp_subteam.get("pool", "A"),
-        "points": mvp_subteam.get("points", 0),
-        "played": mvp_subteam.get("played", 0),
-        "won": mvp_subteam.get("win", 0),
-        "lost": mvp_subteam.get("loss", 0),
-        "gf": mvp_subteam.get("gf", 0),
-        "ga": mvp_subteam.get("ga", 0),
-        "gd": mvp_subteam.get("gd", 0)
+        "team_name": top_entry.get("team_name", "Unknown"),
+        "team_id": top_entry.get("team_id", "No players"),
+        "pool": top_entry.get("pool", "A"),
+        "points": top_entry.get("points", 0),
+        "played": top_entry.get("played", 0),
+        "won": top_entry.get("won", 0),
+        "lost": top_entry.get("lost", 0),
+        "gf": top_entry.get("gf", 0),
+        "ga": top_entry.get("ga", 0),
+        "gd": top_entry.get("gd", 0)
     }
+
+
+def get_mvp(db, event: str = "foosball") -> Optional[Dict[str, Any]]:
+    """Get MVP (top subteam, including playoff match stats)"""
+    return build_mvp(event)
 
 
 def get_announcements_data(db) -> List[str]:
@@ -191,7 +178,7 @@ async def get_announcements_async(async_db) -> List[str]:
     
     announcements = announcement_doc.get("items", [])
     
-    if not isinstance(announcements, list) or not all(isinstance(item, str) for item in announcements):
+    if not isinstance(announcements, list):
         return []
     
     return announcements
@@ -207,17 +194,59 @@ def get_events_data() -> List[Dict[str, str]]:
         return []
 
 
-async def get_events_data_async() -> List[Dict[str, str]]:
-    """Get upcoming events from JSON file (async version)"""
+async def get_events_data_async(async_db) -> List[Dict[str, Any]]:
+    """Get active upcoming events from MongoDB collection"""
     try:
-        # Use asyncio to read file without blocking
-        loop = asyncio.get_event_loop()
-        def read_file():
-            with open(EVENTS_FILE, 'r') as f:
-                return json.load(f)
-        return await loop.run_in_executor(None, read_file)
-    except (FileNotFoundError, json.JSONDecodeError):
+        events_cursor = async_db.events.find({"is_active": {"$ne": False}}).sort([("order", 1), ("_id", 1)])
+        events = await events_cursor.to_list(length=None)
+        if not events:
+            if os.path.exists(EVENTS_FILE):
+                try:
+                    with open(EVENTS_FILE, 'r') as f:
+                        return json.load(f)
+                except Exception:
+                    pass
+            return []
+
+        return [
+            {
+                "_id": str(e.get("_id")),
+                "event": str(e.get("event", "")),
+                "month": str(e.get("month", "")),
+                "description": e.get("description"),
+                "status": e.get("status", "upcoming"),
+                "order": int(e.get("order", 0)),
+                "is_active": bool(e.get("is_active", True))
+            }
+            for e in events
+        ]
+    except Exception as err:
+        print(f"Error fetching upcoming events from MongoDB: {err}")
         return []
+
+
+@router.delete("/cache", status_code=204)
+async def clear_dashboard_cache(event: Optional[str] = Query(None, description="Clear cache for a specific event, or all if omitted")):
+    """Manually clear the dashboard cache (admin use). Clears all event caches or a specific one."""
+    if event:
+        from backend.cache import delete_cached
+        await delete_cached(dashboard_cache_key(event.lower()))
+    else:
+        await invalidate_dashboard_cache()
+
+
+@router.get("/cache/metrics")
+async def get_cache_metrics():
+    """Return basic cache health info."""
+    from backend.cache import get_redis
+    client = get_redis()
+    if not client:
+        return {"cache": "disabled"}
+    try:
+        keys = client.keys("dashboard:*")
+        return {"cache": "enabled", "dashboard_keys": len(keys), "keys": keys}
+    except Exception as e:
+        return {"cache": "error", "detail": str(e)}
 
 
 @router.get("/")
@@ -258,69 +287,104 @@ async def get_dashboard(event: str = Query("foosball", description="Filter by ev
     print(f"❌ Cache MISS for key: {cache_key} - fetching from database")
     async_db = get_async_database()
     
-    # Fetch data in parallel using native async operations (no thread pool needed!)
-    matches_cursor = async_db.matches.find({"event": event})
-    matches = await matches_cursor.to_list(length=None)
+    # Fetch data in parallel using native async operations
+    all_matches_cursor = async_db.matches.find({})
+    all_matches_task = all_matches_cursor.to_list(length=None)
     
-    subteams_count_task = async_db.subteams.count_documents({"event": event})
+    all_subteams_cursor = async_db.subteams.find({})
+    all_subteams_task = all_subteams_cursor.to_list(length=None)
+    
     announcements_task = get_announcements_async(async_db)
-    events_task = get_events_data_async()
+    events_task = get_events_data_async(async_db)
     
-    # Wait for remaining tasks
-    subteams_count, announcements, events = await asyncio.gather(
-        subteams_count_task,
+    # Wait for all tasks
+    all_matches, all_subteams, announcements, events = await asyncio.gather(
+        all_matches_task,
+        all_subteams_task,
         announcements_task,
         events_task
     )
     
-    # Process matches once to derive all match-related data
-    match_data = process_matches_data(matches, subteams_count)
+    # Group matches and subteams by event
+    from collections import defaultdict
+    matches_by_event = defaultdict(list)
+    for m in all_matches:
+        ev_name = m.get("event", "foosball").lower()
+        matches_by_event[ev_name].append(m)
+        
+    subteams_count_by_event = defaultdict(int)
+    for s in all_subteams:
+        ev_name = s.get("event", "foosball").lower()
+        subteams_count_by_event[ev_name] += 1
     
-    # Compute standings once
-    standings = calculate_points_table(event)
+    # Find all ongoing events that have matches or subteams registered
+    ongoing_event_names = set(matches_by_event.keys()) | set(subteams_count_by_event.keys())
+    if event.lower() not in ongoing_event_names:
+        ongoing_event_names.add(event.lower())
+    if not ongoing_event_names:
+        ongoing_event_names = {"foosball"}
     
-    # Get MVP directly from subteams collection (sorted by points, then goals)
-    mvp = None
-    mvp_subteam = await async_db.subteams.find_one(
-        {"event": event},
-        sort=[("points", -1), ("gf", -1)]
+    sorted_ongoing_event_names = sorted(list(ongoing_event_names))
+    
+    # Process each ongoing event, skipping events whose final has been played
+    ongoing_events_data = []
+    for ev in sorted_ongoing_event_names:
+        ev_matches = matches_by_event.get(ev, [])
+        ev_subteams_count = subteams_count_by_event.get(ev, 0)
+
+        # Skip events where all final matches have been played (tournament complete)
+        final_matches = [m for m in ev_matches if m.get("match_type") == "final"]
+        if final_matches and all(m.get("match_status") == "played" for m in final_matches):
+            continue
+
+        ev_match_data = process_matches_data(ev_matches, ev_subteams_count)
+        ev_standings = calculate_points_table(ev)
+        ev_mvp = build_mvp(ev)
+
+        ongoing_events_data.append({
+            "event": ev,
+            "stats": ev_match_data["stats"],
+            "nextMatch": ev_match_data["nextMatch"],
+            "latestResult": ev_match_data["latestResult"],
+            "recentResults": ev_match_data["recentResults"],
+            "standings": ev_standings,
+            "mvp": ev_mvp
+        })
+    
+    # Select event-specific data (or fallback to first ongoing event)
+    selected_event_lower = event.lower()
+    selected_event_data = next(
+        (ed for ed in ongoing_events_data if ed["event"] == selected_event_lower),
+        ongoing_events_data[0] if ongoing_events_data else None
     )
     
-    if mvp_subteam:
-        # Get player names
-        player_ids = mvp_subteam.get("player_ids", [])
-        player_names = []
-        if player_ids:
-            from bson import ObjectId
-            valid_ids = [ObjectId(pid) for pid in player_ids if ObjectId.is_valid(str(pid))]
-            if valid_ids:
-                players_cursor = async_db.players.find({"_id": {"$in": valid_ids}})
-                players = await players_cursor.to_list(length=None)
-                player_names = [p.get("player_name", "Unknown") for p in players]
-        
-        team = mvp_subteam.get("team", "Unknown")
-        subteam_id = mvp_subteam.get("subteam_id", 0)
-        
-        mvp = {
-            "team_name": f"{team}-{subteam_id}",
-            "team_id": ", ".join(player_names) if player_names else "No players",
-            "pool": mvp_subteam.get("pool", "A"),
-            "points": mvp_subteam.get("points", 0),
-            "played": mvp_subteam.get("played", 0),
-            "won": mvp_subteam.get("win", 0),
-            "lost": mvp_subteam.get("loss", 0),
-            "gf": mvp_subteam.get("gf", 0),
-            "ga": mvp_subteam.get("ga", 0),
-            "gd": mvp_subteam.get("gd", 0)
-        }
+    if selected_event_data:
+        stats = selected_event_data["stats"]
+        next_match = selected_event_data["nextMatch"]
+        latest_result = selected_event_data["latestResult"]
+        recent_results = selected_event_data["recentResults"]
+        standings = selected_event_data["standings"]
+        mvp = selected_event_data["mvp"]
+    else:
+        matches = matches_by_event.get(selected_event_lower, [])
+        subteams_count = subteams_count_by_event.get(selected_event_lower, 0)
+        match_data = process_matches_data(matches, subteams_count)
+        stats = match_data["stats"]
+        next_match = match_data["nextMatch"]
+        latest_result = match_data["latestResult"]
+        recent_results = match_data["recentResults"]
+        standings = calculate_points_table(selected_event_lower)
+        mvp = build_mvp(selected_event_lower)
     
     dashboard_data = {
-        "stats": match_data["stats"],
-        "nextMatch": match_data["nextMatch"],
-        "latestResult": match_data["latestResult"],
-        "recentResults": match_data["recentResults"],
+        "event": selected_event_lower,
+        "stats": stats,
+        "nextMatch": next_match,
+        "latestResult": latest_result,
+        "recentResults": recent_results,
         "standings": standings,
         "mvp": mvp,
+        "ongoingEvents": ongoing_events_data,
         "announcements": announcements,
         "events": events
     }
