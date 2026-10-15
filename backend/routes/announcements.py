@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Any, Union
 from backend.database import get_database
 from backend.cache import get_cached, set_cached, invalidate_announcements_cache, invalidate_dashboard_cache, announcements_cache_key
 
@@ -8,7 +8,7 @@ router = APIRouter(prefix="/announcements", tags=["announcements"])
 ANNOUNCEMENTS_DOCUMENT_ID = "active_announcements"
 
 
-@router.get("/", response_model=List[str])
+@router.get("/", response_model=List[Any])
 async def get_announcements():
     """
     Get all active announcements from MongoDB.
@@ -33,7 +33,7 @@ async def get_announcements():
     else:
         announcements = announcement_doc.get("items", [])
         
-        if not isinstance(announcements, list) or not all(isinstance(item, str) for item in announcements):
+        if not isinstance(announcements, list):
             raise HTTPException(status_code=500, detail="Invalid announcements data in database")
     
     # Cache the result with no expiration - will be invalidated on updates
@@ -43,14 +43,21 @@ async def get_announcements():
 
 
 @router.put("/")
-async def update_announcements(announcements: List[str]):
+async def update_announcements(announcements: List[Any]):
     """Update all announcements (admin only)"""
     db = get_database()
 
-    if not all(isinstance(a, str) for a in announcements):
-        raise HTTPException(status_code=400, detail="All announcements must be strings")
-
-    sanitized_announcements = [announcement.strip() for announcement in announcements if announcement.strip()]
+    sanitized_announcements = []
+    for a in announcements:
+        if isinstance(a, str) and a.strip():
+            sanitized_announcements.append(a.strip())
+        elif isinstance(a, dict) and a.get("text"):
+            sanitized_announcements.append({
+                "text": str(a.get("text", "")).strip(),
+                "category": str(a.get("category", "general")),
+                "link": str(a.get("link", "")).strip() if a.get("link") else None,
+                "linkText": str(a.get("linkText", "")).strip() if a.get("linkText") else None,
+            })
 
     try:
         db.announcements.update_one(

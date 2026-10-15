@@ -145,6 +145,7 @@ async def create_match(match: MatchCreate):
         "match_status": MatchStatus.SCHEDULED.value,
         "round": match.round,
         "match_type": match.match_type.value,
+        "playoff_position": match.playoff_position,
         "match_date": match.match_date,
         "match_time": match.match_time
     }

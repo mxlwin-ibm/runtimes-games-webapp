@@ -22,7 +22,9 @@ import {
 } from "@carbon/react";
 import { Renew } from "@carbon/icons-react";
 
+import { useLocation } from "react-router-dom";
 import { getPointsTable } from "../services/api";
+import { resolveEventParam } from "../utils/eventFilter";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
 
@@ -151,11 +153,14 @@ const PoolTable = ({ title, standings, headers }) => {
 };
 
 const PointTable = () => {
+  const { search } = useLocation();
   const [allStandings, setAllStandings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
-  const [selectedEvent, setSelectedEvent] = useState("Foosball");
+  const [selectedEvent, setSelectedEvent] = useState(() =>
+    resolveEventParam(search, EVENTS, "Foosball")
+  );
   const [selectedPool, setSelectedPool] = useState("All Pools");
 
   // Get headers based on selected event

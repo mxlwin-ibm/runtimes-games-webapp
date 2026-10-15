@@ -14,7 +14,9 @@ import {
   AccordionItem,
 } from "@carbon/react";
 import { Add, Edit, ChevronDown, Calendar, CheckmarkFilled } from "@carbon/icons-react";
+import { useLocation } from "react-router-dom";
 import { getMatches, getSubteams } from "../services/api";
+import { resolveEventParam } from "../utils/eventFilter";
 import MatchForm from "../components/forms/MatchForm";
 import MatchUpdateForm from "../components/forms/MatchUpdateForm";
 import MatchRescheduleForm from "../components/forms/MatchRescheduleForm";
@@ -38,6 +40,7 @@ const POOLS = ["All Pools", "Pool A", "Pool B", "Pool C", "Pool D"];
 
 const Matches = () => {
   const { isAdmin } = useAuth();
+  const { search } = useLocation();
   const [matches, setMatches] = useState([]);
   const [subteams, setSubteams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +49,9 @@ const Matches = () => {
   const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState(null);
-  const [selectedEvent, setSelectedEvent] = useState("Foosball");
+  const [selectedEvent, setSelectedEvent] = useState(() =>
+    resolveEventParam(search, EVENTS, "Foosball")
+  );
   const [selectedMode, setSelectedMode] = useState("League");
   const [selectedPool, setSelectedPool] = useState("All Pools");
   const [toast, setToast] = useState(null);
@@ -197,9 +202,23 @@ const Matches = () => {
       }
     });
     
-    // Sort matches within each playoff stage by date/time
+    // Sort matches within each playoff stage by round (stable label order), then date/time
     Object.keys(grouped).forEach((stage) => {
-      grouped[stage] = sortMatchesByDateTime(grouped[stage]);
+      grouped[stage] = [...grouped[stage]].sort((a, b) => {
+        const roundDiff = (a.round || 1) - (b.round || 1);
+        if (roundDiff !== 0) return roundDiff;
+        // Same round: sort by date/time
+        if (a.match_date && b.match_date) {
+          const dateCompare = a.match_date.localeCompare(b.match_date);
+          if (dateCompare !== 0) return dateCompare;
+          if (a.match_time && b.match_time) return a.match_time.localeCompare(b.match_time);
+          if (a.match_time) return -1;
+          if (b.match_time) return 1;
+        }
+        if (a.match_date) return -1;
+        if (b.match_date) return 1;
+        return 0;
+      });
     });
     
     return grouped;
@@ -558,17 +577,19 @@ const Matches = () => {
                 Quarter Finals
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {matchesByPlayoffStage.quarter_final.map((match, index) => (
+                {matchesByPlayoffStage.quarter_final.map((match) => (
                   <div key={match._id}>
-                    <div style={{
-                      fontSize: "0.875rem",
-                      fontWeight: "600",
-                      color: "#525252",
-                      marginBottom: "0.25rem",
-                      paddingLeft: "0.5rem"
-                    }}>
-                      QF{index + 1}
-                    </div>
+                    {match.playoff_position && (
+                      <div style={{
+                        fontSize: "0.875rem",
+                        fontWeight: "600",
+                        color: "#525252",
+                        marginBottom: "0.25rem",
+                        paddingLeft: "0.5rem"
+                      }}>
+                        {match.playoff_position}
+                      </div>
+                    )}
                     <MatchRow match={match} />
                   </div>
                 ))}
@@ -582,17 +603,19 @@ const Matches = () => {
                 Semi Finals
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {matchesByPlayoffStage.semi_final.map((match, index) => (
+                {matchesByPlayoffStage.semi_final.map((match) => (
                   <div key={match._id}>
-                    <div style={{
-                      fontSize: "0.875rem",
-                      fontWeight: "600",
-                      color: "#525252",
-                      marginBottom: "0.25rem",
-                      paddingLeft: "0.5rem"
-                    }}>
-                      SF{index + 1}
-                    </div>
+                    {match.playoff_position && (
+                      <div style={{
+                        fontSize: "0.875rem",
+                        fontWeight: "600",
+                        color: "#525252",
+                        marginBottom: "0.25rem",
+                        paddingLeft: "0.5rem"
+                      }}>
+                        {match.playoff_position}
+                      </div>
+                    )}
                     <MatchRow match={match} />
                   </div>
                 ))}

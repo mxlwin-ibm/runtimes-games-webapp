@@ -8,12 +8,14 @@ import time
 logger = logging.getLogger(__name__)
 
 
-def calculate_points_table(event: Optional[str] = None) -> List[Dict[str, Any]]:
+def calculate_points_table(event: Optional[str] = None, include_playoffs: bool = False) -> List[Dict[str, Any]]:
     """
-    Calculate points table from LEAGUE matches only (excludes playoff matches).
+    Calculate points table from LEAGUE matches only (excludes playoff matches)
+    unless include_playoffs is True.
     
     Args:
         event: Optional event name to filter by
+        include_playoffs: Also count quarter/semi/final matches (used for MVP)
     
     Returns sorted list by:
     1. Points (descending)
@@ -34,9 +36,11 @@ def calculate_points_table(event: Optional[str] = None) -> List[Dict[str, Any]]:
     subteams = list(db.subteams.find(subteams_query))
     subteams_query_ms = (time.perf_counter() - subteams_query_start) * 1000
 
-    # Get all LEAGUE matches only (exclude playoff matches)
+    # Get played matches; LEAGUE only unless playoffs are explicitly included
     matches_query_start = time.perf_counter()
-    matches_query = {"match_status": "played", "match_type": "league"}
+    matches_query = {"match_status": "played"}
+    if not include_playoffs:
+        matches_query["match_type"] = "league"
     if event:
         matches_query["event"] = event
     matches = list(db.matches.find(matches_query))

@@ -56,7 +56,17 @@ export const getPointsTable = (params) => {
 };
 
 // Events API
-export const getEvents = () => api.get("/events/");
+export const getEvents = (params) => {
+  const queryParams = new URLSearchParams();
+  if (params?.include_inactive !== undefined) queryParams.append("include_inactive", params.include_inactive);
+  const queryString = queryParams.toString();
+  return api.get(`/events/${queryString ? `?${queryString}` : ""}`);
+};
+export const getEvent = (id) => api.get(`/events/${id}`);
+export const createEvent = (eventData) => api.post("/events/", eventData);
+export const updateEvent = (id, eventData) => api.put(`/events/${id}`, eventData);
+export const deleteEvent = (id, permanent = true) => api.delete(`/events/${id}?permanent=${permanent}`);
+export const reorderEvents = (items) => api.put("/events/reorder", items);
 export const updateEvents = (events) => api.put("/events/", events);
 
 // Announcements API

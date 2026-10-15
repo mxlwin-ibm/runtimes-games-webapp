@@ -21,7 +21,9 @@ import {
 } from "@carbon/react";
 import { Add } from "@carbon/icons-react";
 
+import { useLocation } from "react-router-dom";
 import { getSubteams, getPlayers } from "../services/api";
+import { resolveEventParam } from "../utils/eventFilter";
 import LoadingState from "../components/common/LoadingState";
 import EmptyState from "../components/common/EmptyState";
 import SquadForm from "../components/forms/SquadForm";
@@ -53,12 +55,15 @@ const SPORTS = [
 
 const Squad = () => {
   const { isAdmin } = useAuth();
+  const { search } = useLocation();
   const [squads, setSquads] = useState([]);
   const [players, setPlayers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
-  const [selectedSport, setSelectedSport] = useState("All");
+  const [selectedSport, setSelectedSport] = useState(() =>
+    resolveEventParam(search, SPORTS, "All")
+  );
   const [selectedTeam, setSelectedTeam] = useState("Titans");
   const [modalOpen, setModalOpen] = useState(false);
 

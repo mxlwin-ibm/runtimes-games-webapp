@@ -25,6 +25,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
     round: 1,
     event: event.toLowerCase(),
     match_type: mode === "Playoffs" ? "quarter_final" : "league",
+    playoff_position: "",
     match_date: "",
     match_time: "",
   });
@@ -79,6 +80,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         ...prev,
         event: event.toLowerCase(),
         match_type: mode === "Playoffs" ? "quarter_final" : "league",
+        playoff_position: "",
         pool: "",
         team1: "",
         team1_subid: "",
@@ -186,6 +188,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         round: formData.round,
         event: formData.event,
         match_type: formData.match_type,
+        playoff_position: mode === "Playoffs" ? formData.playoff_position || null : null,
         match_date: formData.match_date,
         match_time: formData.match_time,
       };
@@ -201,6 +204,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         round: 1,
         event: event.toLowerCase(),
         match_type: mode === "Playoffs" ? "quarter_final" : "league",
+        playoff_position: "",
         match_date: "",
         match_time: "",
       });
@@ -213,11 +217,11 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
     }
   };
 
-  // For league matches, pool is required. For playoffs, it's not.
+  // For league matches, pool is required. For playoffs, playoff_position label is also required.
   // Date and time are now required for all matches
   const isValid = mode === "League"
     ? formData.pool && formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid && formData.round > 0 && formData.match_date && formData.match_time
-    : formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid && formData.round > 0 && formData.match_date && formData.match_time;
+    : formData.playoff_position && formData.team1 && formData.team1_subid && formData.team2 && formData.team2_subid && formData.round > 0 && formData.match_date && formData.match_time;
   
   // Filter subteams based on selected pool (only for league matches)
   const filteredSubteams = mode === "League" && formData.pool
@@ -258,17 +262,47 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
       )}
       
       {mode === "Playoffs" && (
-        <Select
-          id="match_type"
-          labelText="Playoff Stage"
-          value={formData.match_type}
-          onChange={handleSelectChange}
-          style={{ marginBottom: "1rem" }}
-        >
-          <SelectItem value="quarter_final" text="Quarter Final" />
-          <SelectItem value="semi_final" text="Semi Final" />
-          <SelectItem value="final" text="Final" />
-        </Select>
+        <>
+          <Select
+            id="match_type"
+            labelText="Playoff Stage"
+            value={formData.match_type}
+            onChange={(e) => {
+              setFormData({ ...formData, match_type: e.target.value, playoff_position: "" });
+            }}
+            style={{ marginBottom: "1rem" }}
+          >
+            <SelectItem value="quarter_final" text="Quarter Final" />
+            <SelectItem value="semi_final" text="Semi Final" />
+            <SelectItem value="final" text="Final" />
+          </Select>
+          <Select
+            id="playoff_position"
+            labelText="Match Label *"
+            value={formData.playoff_position}
+            onChange={(e) => setFormData({ ...formData, playoff_position: e.target.value })}
+            style={{ marginBottom: "1rem" }}
+          >
+            <SelectItem value="" text="Select label" />
+            {formData.match_type === "quarter_final" && (
+              <>
+                <SelectItem value="QF1" text="QF1" />
+                <SelectItem value="QF2" text="QF2" />
+                <SelectItem value="QF3" text="QF3" />
+                <SelectItem value="QF4" text="QF4" />
+              </>
+            )}
+            {formData.match_type === "semi_final" && (
+              <>
+                <SelectItem value="SF1" text="SF1" />
+                <SelectItem value="SF2" text="SF2" />
+              </>
+            )}
+            {formData.match_type === "final" && (
+              <SelectItem value="Final" text="Final" />
+            )}
+          </Select>
+        </>
       )}
 
       {mode === "League" && (

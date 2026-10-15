@@ -13,6 +13,7 @@ class MatchCreate(BaseModel):
     event: str = Field(default="foosball", description="Event name")
     round: int = Field(default=1, ge=1, description="Round number")
     match_type: MatchType = Field(default=MatchType.LEAGUE, description="Match type: league or playoff stage")
+    playoff_position: Optional[str] = Field(None, description="Playoff label (e.g., 'QF1', 'SF2', 'Final')")
     match_date: str = Field(..., description="Match date in YYYY-MM-DD format (required)")
     match_time: str = Field(..., description="Match time in HH:MM format (24-hour, required)")
     

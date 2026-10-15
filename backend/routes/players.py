@@ -3,6 +3,8 @@ from backend.models.player import PlayerCreate, Player, TeamName
 from backend.database import get_database
 from backend.cache import (
     invalidate_players_cache,
+    invalidate_dashboard_cache,
+    invalidate_points_table_cache,
     get_cached,
     set_cached,
     players_cache_key
@@ -44,9 +46,11 @@ async def create_player(player: PlayerCreate):
     result = db.players.insert_one(player_dict)
     player_dict["_id"] = str(result.inserted_id)
     
-    # Invalidate players cache after creating a player
-    print(f"🗑️  Invalidating players cache after player creation")
+    # Invalidate players, points table and dashboard cache after creating a player
+    print(f"🗑️  Invalidating players, points table and dashboard cache after player creation")
     await invalidate_players_cache()
+    await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return player_dict
 
@@ -162,9 +166,11 @@ async def update_player(id: str, player_update: PlayerCreate):
     # Get updated player
     updated_player = db.players.find_one({"_id": ObjectId(id)})
     
-    # Invalidate players cache after updating a player
-    print(f"🗑️  Invalidating players cache after player update")
+    # Invalidate players, points table and dashboard cache after updating a player
+    print(f"🗑️  Invalidating players, points table and dashboard cache after player update")
     await invalidate_players_cache()
+    await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return player_helper(updated_player)
 
@@ -189,9 +195,11 @@ async def delete_player(id: str):
             detail=f"Player with id '{id}' not found"
         )
     
-    # Invalidate players cache after deleting a player
-    print(f"🗑️  Invalidating players cache after player deletion")
+    # Invalidate players, points table and dashboard cache after deleting a player
+    print(f"🗑️  Invalidating players, points table and dashboard cache after player deletion")
     await invalidate_players_cache()
+    await invalidate_points_table_cache()
+    await invalidate_dashboard_cache()
     
     return None
 
