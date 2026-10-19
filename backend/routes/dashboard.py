@@ -35,12 +35,14 @@ def process_matches_data(matches: List[Dict[str, Any]], subteams_count: int) -> 
         "totalGoals": total_goals
     }
     
-    # Get next match (earliest scheduled)
+    # Get next match (earliest scheduled, ignoring undated matches unless all are undated)
     next_match = None
     if scheduled_matches:
+        # Use a sentinel that sorts after all real dates so undated matches come last
+        _MAX_DATE = "9999-99-99"
         sorted_scheduled = sorted(
             scheduled_matches,
-            key=lambda m: (m.get("match_date") or "", m.get("match_time") or "")
+            key=lambda m: (m.get("match_date") or _MAX_DATE, m.get("match_time") or "")
         )
         next_match = match_helper(sorted_scheduled[0])
     
@@ -96,12 +98,18 @@ def get_stats(db, event: str = "foosball") -> Dict[str, Any]:
 
 
 def get_next_match(db, event: str = "foosball") -> Optional[Dict[str, Any]]:
-    """Get the next scheduled match"""
+    """Get the next scheduled match — prefer dated matches over undated ones"""
+    # First try matches that have a date so undated entries don't float to the top
     next_match = db.matches.find_one(
-        {"event": event, "match_status": "scheduled"},
+        {"event": event, "match_status": "scheduled", "match_date": {"$ne": None}},
         sort=[("match_date", 1), ("match_time", 1)]
     )
-    
+    if next_match is None:
+        # Fall back to any scheduled match if all are undated
+        next_match = db.matches.find_one(
+            {"event": event, "match_status": "scheduled"},
+            sort=[("match_date", 1), ("match_time", 1)]
+        )
     if next_match:
         return match_helper(next_match)
     return None
