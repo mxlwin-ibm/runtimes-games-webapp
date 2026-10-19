@@ -261,11 +261,12 @@ const Dashboard = () => {
     completed: currentEventMatches.filter(m => m.match_status === 'played').length,
   };
 
-  // Next scheduled match (prioritizing selected event, then any scheduled match)
+  // Next scheduled match (prioritizing selected event, then any scheduled match).
+  // Sort into a new array to avoid mutating the filtered array in place.
   const selectedEventScheduled = currentEventMatches.filter(m => m.match_status === 'scheduled');
   const allScheduled = matches.filter(m => m.match_status === 'scheduled');
   const candidateScheduled = selectedEventScheduled.length > 0 ? selectedEventScheduled : allScheduled;
-  const nextMatch = candidateScheduled.sort((a, b) => {
+  const nextMatch = [...candidateScheduled].sort((a, b) => {
     const timeA = parseMatchDateTime(a.match_date, a.match_time);
     const timeB = parseMatchDateTime(b.match_date, b.match_time);
     if (timeA && timeB) return timeA - timeB;
@@ -274,30 +275,34 @@ const Dashboard = () => {
     return (a.round || 0) - (b.round || 0);
   })[0];
 
-  // Latest completed match (prioritizing selected event, then any completed match)
+  // Latest completed match:
+  //  - When an event is ongoing, only show played matches for the selected event.
+  //    If the selected event has no played matches yet, show nothing (not a
+  //    cross-event result — that would be misleading when the event hasn't started).
+  //  - When no events are ongoing (all tournaments complete), use all played
+  //    matches across every event so the globally most recent result is shown.
   const selectedEventPlayed = currentEventMatches.filter(m => m.match_status === 'played');
   const allPlayed = matches.filter(m => m.match_status === 'played');
-  const candidatePlayed = selectedEventPlayed.length > 0 ? selectedEventPlayed : allPlayed;
-  const latestResult = candidatePlayed.sort((a, b) => {
+  const candidatePlayed =
+    ongoingEvents.length === 0
+      ? allPlayed
+      : selectedEventPlayed;
+
+  const playedSortComparator = (a, b) => {
     const timeA = parseMatchDateTime(a.match_date, a.match_time);
     const timeB = parseMatchDateTime(b.match_date, b.match_time);
     if (timeA && timeB) return timeB - timeA;
     if (timeA) return -1;
     if (timeB) return 1;
     return (b.round || 0) - (a.round || 0);
-  })[0];
+  };
+
+  // Sort into a new array to avoid mutating the filtered array in place.
+  const sortedPlayed = [...candidatePlayed].sort(playedSortComparator);
+  const latestResult = sortedPlayed[0];
 
   // Recent results (last 3 completed matches)
-  const recentResults = candidatePlayed
-    .sort((a, b) => {
-      const timeA = parseMatchDateTime(a.match_date, a.match_time);
-      const timeB = parseMatchDateTime(b.match_date, b.match_time);
-      if (timeA && timeB) return timeB - timeA;
-      if (timeA) return -1;
-      if (timeB) return 1;
-      return (b.round || 0) - (a.round || 0);
-    })
-    .slice(0, 3);
+  const recentResults = sortedPlayed.slice(0, 3);
 
   // Calculate MVP from active ongoing event or points table.
   // Returns null when there are no ongoing events — the MVP card must be
