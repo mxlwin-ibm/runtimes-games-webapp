@@ -365,7 +365,25 @@ const Matches = () => {
               </div>
               
               {/* Action Buttons Column - Fixed width to maintain alignment */}
-              <div style={{ minWidth: "250px", width: "250px", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+              <div style={{ minWidth: "250px", width: "250px", display: "flex", gap: "0.5rem", justifyContent: "flex-end", alignItems: "center" }}>
+                {match.link && (
+                  <a
+                    href={match.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      fontSize: "0.875rem",
+                      color: "#0f62fe",
+                      textDecoration: "underline",
+                      marginRight: "0.5rem",
+                    }}
+                  >
+                    Watch/Replay
+                  </a>
+                )}
                 {isAdmin && match.match_status === "scheduled" && (
                   <>
                     {isPlaceholderMatch(match) ? (
@@ -451,6 +469,16 @@ const Matches = () => {
               <p><strong>Status:</strong> {match.match_status}</p>
               {match.match_date && <p><strong>Date:</strong> {match.match_date}</p>}
               {match.match_time && <p><strong>Time:</strong> {match.match_time}</p>}
+              <p>
+                <strong>Match Link:</strong>{" "}
+                {match.link ? (
+                  <a href={match.link} target="_blank" rel="noopener noreferrer" style={{ color: "#0f62fe", textDecoration: "underline" }}>
+                    {match.link}
+                  </a>
+                ) : (
+                  <span style={{ color: "#8d8d8d", fontStyle: "italic" }}>None available</span>
+                )}
+              </p>
             </div>
           </div>
         </AccordionItem>

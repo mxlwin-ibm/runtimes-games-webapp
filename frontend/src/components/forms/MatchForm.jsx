@@ -28,6 +28,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
     playoff_position: "",
     match_date: "",
     match_time: "",
+    link: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -88,6 +89,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         team2_subid: "",
         match_date: "",
         match_time: "",
+        link: "",
       }));
     }
   }, [open, event, mode]);
@@ -191,6 +193,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         playoff_position: mode === "Playoffs" ? formData.playoff_position || null : null,
         match_date: formData.match_date,
         match_time: formData.match_time,
+        link: formData.link ? formData.link.trim() : null,
       };
 
       await createMatch(matchData);
@@ -207,6 +210,7 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         playoff_position: "",
         match_date: "",
         match_time: "",
+        link: "",
       });
       onSuccess();
       onClose();
@@ -411,6 +415,15 @@ const MatchForm = ({ open, onClose, onSuccess, event = "foosball", mode = "Leagu
         pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"
         invalidText="Please enter time in HH:MM format (e.g., 14:30)"
         required
+        style={{ marginBottom: "1rem" }}
+      />
+
+      <TextInput
+        id="link"
+        labelText="Match Link (Optional)"
+        placeholder="https://example.com/replay"
+        value={formData.link || ""}
+        onChange={(e) => setFormData({ ...formData, link: e.target.value })}
       />
     </Modal>
   );

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Modal,
   NumberInput,
   Select,
   SelectItem,
   InlineNotification,
+  TextInput,
 } from "@carbon/react";
 import { updateMatch } from "../../services/api";
 
@@ -13,7 +14,19 @@ const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
     team1_score: 0,
     team2_score: 0,
     match_status: "played",
+    link: "",
   });
+
+  useEffect(() => {
+    if (match) {
+      setFormData({
+        team1_score: match.team1_score || 0,
+        team2_score: match.team2_score || 0,
+        match_status: match.match_status || "played",
+        link: match.link || "",
+      });
+    }
+  }, [match]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -36,8 +49,12 @@ const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
     setLoading(true);
 
     try {
-      await updateMatch(match._id, formData);
-      setFormData({ team1_score: 0, team2_score: 0, match_status: "played" });
+      const payload = {
+        ...formData,
+        link: formData.link ? formData.link.trim() : null,
+      };
+      await updateMatch(match._id, payload);
+      setFormData({ team1_score: 0, team2_score: 0, match_status: "played", link: "" });
       onSuccess();
       onClose();
     } catch (err) {
@@ -90,9 +107,18 @@ const MatchUpdateForm = ({ open, onClose, onSuccess, match }) => {
         labelText="Status"
         value={formData.match_status}
         onChange={handleSelectChange}
+        style={{ marginBottom: "1rem" }}
       >
         <SelectItem value="played" text="Played" />
       </Select>
+
+      <TextInput
+        id="link"
+        labelText="Match Link (Optional)"
+        placeholder="https://example.com/replay"
+        value={formData.link || ""}
+        onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+      />
     </Modal>
   );
 };

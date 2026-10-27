@@ -69,6 +69,7 @@ const MatchRescheduleForm = ({ open, onClose, onSuccess, match }) => {
         match_status: match.match_status || "scheduled",
         match_date: formData.match_date || match.match_date,
         match_time: formData.match_time || match.match_time,
+        link: match.link || null,
       };
 
       await updateMatch(match._id, updateData);
