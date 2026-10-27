@@ -32,7 +32,8 @@ def match_helper(match) -> dict:
         "match_type": match.get("match_type", "league"),
         "playoff_position": match.get("playoff_position"),
         "match_date": match.get("match_date"),
-        "match_time": match.get("match_time")
+        "match_time": match.get("match_time"),
+        "link": match.get("link")
     }
 
 
@@ -147,7 +148,8 @@ async def create_match(match: MatchCreate):
         "match_type": match.match_type.value,
         "playoff_position": match.playoff_position,
         "match_date": match.match_date,
-        "match_time": match.match_time
+        "match_time": match.match_time,
+        "link": match.link
     }
     
     result = db.matches.insert_one(match_dict)
@@ -265,6 +267,8 @@ async def update_match(id: str, match_update: MatchUpdate):
         update_data["match_date"] = match_update.match_date
     if match_update.match_time is not None:
         update_data["match_time"] = match_update.match_time
+    if "link" in match_update.model_fields_set:
+        update_data["link"] = match_update.link
     
     db.matches.update_one(
         {"_id": ObjectId(id)},

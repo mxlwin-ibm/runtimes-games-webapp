@@ -4,6 +4,22 @@ from datetime import datetime
 from backend.models.enums import MatchStatus, MatchType
 
 
+def validate_match_link(v: Optional[str]) -> Optional[str]:
+    """Helper to validate and normalize match link URL"""
+    if v is None:
+        return v
+    v = v.strip()
+    if v == "":
+        return None
+    if len(v) > 500:
+        raise ValueError("Match link must be 500 characters or less")
+    from urllib.parse import urlparse
+    parsed = urlparse(v)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        raise ValueError("Match link must be a well-formed URL starting with http:// or https://")
+    return v
+
+
 class MatchCreate(BaseModel):
     """Schema for scheduling a new match"""
     team1: str = Field(..., description="First team name (e.g., 'Titans') or pool position (e.g., 'POOL_A_1ST')")
@@ -16,6 +32,12 @@ class MatchCreate(BaseModel):
     playoff_position: Optional[str] = Field(None, description="Playoff label (e.g., 'QF1', 'SF2', 'Final')")
     match_date: str = Field(..., description="Match date in YYYY-MM-DD format (required)")
     match_time: str = Field(..., description="Match time in HH:MM format (24-hour, required)")
+    link: Optional[str] = Field(None, description="Link to the game record, PGN, replay, or broadcast")
+    
+    @field_validator('link')
+    @classmethod
+    def check_link(cls, v):
+        return validate_match_link(v)
     
     @field_validator('team2', 'team1_subid', 'team2_subid')
     @classmethod
@@ -38,6 +60,12 @@ class MatchUpdate(BaseModel):
     match_status: MatchStatus = Field(default=MatchStatus.PLAYED, description="Match status")
     match_date: Optional[str] = Field(None, description="Match date in YYYY-MM-DD format")
     match_time: Optional[str] = Field(None, description="Match time in HH:MM format (24-hour)")
+    link: Optional[str] = Field(None, description="Link to the game record, PGN, replay, or broadcast")
+    
+    @field_validator('link')
+    @classmethod
+    def check_link(cls, v):
+        return validate_match_link(v)
 
 
 class Match(BaseModel):
@@ -58,7 +86,8 @@ class Match(BaseModel):
                 "match_type": "league",
                 "playoff_position": None,
                 "match_date": "2024-06-15",
-                "match_time": "14:30"
+                "match_time": "14:30",
+                "link": "https://lichess.org/broadcast/foo/bar"
             }
         },
         populate_by_name=True
@@ -78,6 +107,12 @@ class Match(BaseModel):
     playoff_position: Optional[str] = Field(None, description="Playoff position (e.g., 'QF1', 'SF1', 'F1')")
     match_date: Optional[str] = Field(None, description="Match date in YYYY-MM-DD format")
     match_time: Optional[str] = Field(None, description="Match time in HH:MM format (24-hour)")
+    link: Optional[str] = Field(None, description="Link to the game record, PGN, replay, or broadcast")
+    
+    @field_validator('link')
+    @classmethod
+    def check_link(cls, v):
+        return validate_match_link(v)
     
     @field_validator('team2', 'team1_subid', 'team2_subid')
     @classmethod
