@@ -1,0 +1,19 @@
+[
+ {
+  "_id": "active_announcements",
+  "items": [
+   {
+    "text": "Chess and Carroms are happening next week\ud83d\udd25",
+    "category": "general",
+    "link": null,
+    "linkText": "Learn More \u2192"
+   },
+   {
+    "text": "Cricket to be scheduled in the second week of November\ud83c\udfcf",
+    "category": "general",
+    "link": null,
+    "linkText": null
+   }
+  ]
+ }
+]
